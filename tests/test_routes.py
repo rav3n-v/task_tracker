@@ -65,7 +65,7 @@ def test_login_logout_flow(client):
 
 
 def test_protected_routes_require_auth(client):
-    for path, method in [('/api/bootstrap', client.get), ('/api/progress', client.get), ('/api/settings', lambda p: client.put(p, json={}))]:
+    for path, method in [('/api/bootstrap', client.get), ('/api/progress', client.get), ('/api/settings', lambda p: client.put(p, json={})), ('/api/tasks', client.get)]:
         response = method(path)
         assert response.status_code == 401
 
@@ -84,6 +84,21 @@ def test_bootstrap_returns_only_current_user_tasks(auth_client, app):
     assert tasks[0]['title'] == 'Alice task'
 
 
+def test_get_tasks_returns_only_current_user_tasks(auth_client, app):
+    with app.app_context():
+        alice = User.query.filter_by(username='alice').first()
+        bob = _create_user('bob', 'secret2')
+        _create_task(alice.id, title='Alice task')
+        _create_task(bob.id, title='Bob task')
+
+    response = auth_client.get('/api/tasks')
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'tasks' in payload
+    assert len(payload['tasks']) == 1
+    assert payload['tasks'][0]['title'] == 'Alice task'
+
+
 def test_create_task_happy_path_with_optional_fields(auth_client, app):
     response = auth_client.post('/api/tasks', json={'title': '  Work examples  ', 'unit': 'Linear Algebra', 'topic': 'Eigenvalues', 'priority': 'High', 'due_date': '2030-05-01', 'notes': '  Review solved problems.  '})
 
@@ -97,13 +112,55 @@ def test_create_task_happy_path_with_optional_fields(auth_client, app):
         assert task.topic == 'Eigenvalues'
 
 
+def test_create_task_validation_errors(auth_client):
+    response = auth_client.post('/api/tasks', json={'title': '   ', 'unit': '', 'topic': 'Topic', 'priority': 'Urgent', 'due_date': '2030/01/01'})
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload['error'] == 'Validation failed'
+    assert payload['details']['title'] == 'title cannot be blank'
+    assert payload['details']['unit'] == 'unit cannot be blank'
+    assert 'priority' in payload['details']
+    assert 'due_date' in payload['details']
+
+
+def test_update_task_accepts_additional_fields(auth_client, app):
+    with app.app_context():
+        alice = User.query.filter_by(username='alice').first()
+        task_id = _create_task(alice.id).id
+
+    response = auth_client.patch(f'/api/tasks/{task_id}', json={'title': 'Updated title', 'unit': 'Numerical Analysis', 'topic': 'Errors', 'completed': True, 'due_date': '2035-01-10', 'notes': 'updated'})
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['title'] == 'Updated title'
+    assert data['completed'] is True
+
+
+def test_patch_task_validation_errors(auth_client, app):
+    with app.app_context():
+        alice = User.query.filter_by(username='alice').first()
+        task_id = _create_task(alice.id).id
+
+    response = auth_client.patch(f'/api/tasks/{task_id}', json={'completed': 'yes', 'due_date': 'invalid'})
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload['error'] == 'Validation failed'
+    assert payload['details']['completed'] == 'completed must be a boolean'
+    assert 'due_date' in payload['details']
+
+
 def test_update_delete_cannot_access_other_users_task(auth_client, app):
     with app.app_context():
         bob = _create_user('bob', 'secret2')
         bob_task_id = _create_task(bob.id).id
 
-    assert auth_client.patch(f'/api/tasks/{bob_task_id}', json={'completed': True}).status_code == 404
-    assert auth_client.delete(f'/api/tasks/{bob_task_id}').status_code == 404
+    patch_response = auth_client.patch(f'/api/tasks/{bob_task_id}', json={'completed': True})
+    assert patch_response.status_code == 404
+    assert patch_response.get_json()['error'] == 'Task not found'
+
+    delete_response = auth_client.delete(f'/api/tasks/{bob_task_id}')
+    assert delete_response.status_code == 404
+    assert delete_response.get_json()['error'] == 'Task not found'
 
 
 def test_update_settings_happy_path(auth_client, app):

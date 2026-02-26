@@ -16,6 +16,7 @@ DEFAULT_PRIORITY = "Medium"
 DEFAULT_THEME = "dark"
 DEFAULT_DAILY_GOAL = 3
 DATE_FORMAT = "%Y-%m-%d"
+ALLOWED_PRIORITIES = {"Low", "Medium", "High"}
 
 # SQLAlchemy instance configured by create_app.
 db = SQLAlchemy()
@@ -164,6 +165,46 @@ def parse_optional_date(date_value: str | None) -> date | None:
     return datetime.strptime(date_value, DATE_FORMAT).date() if date_value else None
 
 
+def parse_json_payload() -> tuple[dict[str, Any] | None, tuple[Response, int] | None]:
+    """Parse JSON request body and return either payload or a JSON error response."""
+
+    payload = request.get_json(silent=True)
+    if payload is None or not isinstance(payload, dict):
+        return None, (jsonify({"error": "Request body must be a valid JSON object"}), 400)
+    return payload, None
+
+
+def validate_task_payload(payload: dict[str, Any], *, partial: bool = False) -> dict[str, str]:
+    """Validate task creation/update payload and return field-level error messages."""
+
+    errors: dict[str, str] = {}
+    required_fields = ["title", "unit", "topic"]
+    if not partial:
+        for field in required_fields:
+            if field not in payload:
+                errors[field] = f"{field} is required"
+
+    for field in required_fields:
+        if field in payload and not str(payload[field]).strip():
+            errors[field] = f"{field} cannot be blank"
+
+    if "priority" in payload and str(payload["priority"]) not in ALLOWED_PRIORITIES:
+        errors["priority"] = f"priority must be one of {sorted(ALLOWED_PRIORITIES)}"
+
+    if "completed" in payload and not isinstance(payload["completed"], bool):
+        errors["completed"] = "completed must be a boolean"
+
+    if "due_date" in payload:
+        due_date = payload["due_date"]
+        if due_date is not None and due_date != "":
+            try:
+                parse_optional_date(str(due_date))
+            except ValueError:
+                errors["due_date"] = f"due_date must use format {DATE_FORMAT}"
+
+    return errors
+
+
 def get_current_user() -> User | None:
     user_id = session.get("user_id")
     if user_id is None:
@@ -198,8 +239,8 @@ def build_task_from_payload(payload: dict[str, Any], user: User) -> Task:
     return Task(
         user_id=user.id,
         title=str(payload["title"]).strip(),
-        unit=str(payload["unit"]),
-        topic=str(payload["topic"]),
+        unit=str(payload["unit"]).strip(),
+        topic=str(payload["topic"]).strip(),
         priority=str(payload.get("priority", DEFAULT_PRIORITY)),
         due_date=parse_optional_date(payload.get("due_date")),
         notes=str(payload.get("notes", "")).strip(),
@@ -209,10 +250,21 @@ def build_task_from_payload(payload: dict[str, Any], user: User) -> Task:
 def update_task_from_payload(task: Task, payload: dict[str, Any]) -> None:
     """Apply mutable task fields from API payload."""
 
+    if "title" in payload:
+        task.title = str(payload["title"]).strip()
+    if "unit" in payload:
+        task.unit = str(payload["unit"]).strip()
+    if "topic" in payload:
+        task.topic = str(payload["topic"]).strip()
     if "completed" in payload:
-        task.completed = bool(payload["completed"])
+        task.completed = payload["completed"]
     if "priority" in payload:
         task.priority = str(payload["priority"])
+    if "due_date" in payload:
+        due_date = payload["due_date"]
+        task.due_date = parse_optional_date(str(due_date)) if due_date else None
+    if "notes" in payload:
+        task.notes = str(payload["notes"]).strip()
 
 
 def update_settings_from_payload(setting: Setting, payload: dict[str, Any]) -> None:
@@ -259,7 +311,10 @@ def create_app() -> Flask:
 
     @app.post("/api/register")
     def register() -> tuple[Response, int]:
-        payload: dict[str, Any] = request.get_json(force=True)
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
         username = str(payload["username"]).strip()
         password = str(payload["password"])
 
@@ -279,7 +334,10 @@ def create_app() -> Flask:
 
     @app.post("/api/login")
     def login() -> tuple[Response, int]:
-        payload: dict[str, Any] = request.get_json(force=True)
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
         username = str(payload["username"]).strip()
         password = str(payload["password"])
 
@@ -307,6 +365,16 @@ def create_app() -> Flask:
         setting = get_or_create_settings(user).to_dict()
         return jsonify({"tasks": tasks, "settings": setting, "syllabus": SYLLABUS, "user": user.to_dict()})
 
+    @app.get("/api/tasks")
+    @require_login
+    def list_tasks() -> Response:
+        """List all tasks for the logged-in user in reverse creation order."""
+
+        user = get_current_user()
+        assert user is not None
+        tasks = Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
+        return jsonify({"tasks": [task.to_dict() for task in tasks]}), 200
+
     @app.post("/api/tasks")
     @require_login
     def create_task() -> tuple[Response, int]:
@@ -314,7 +382,13 @@ def create_app() -> Flask:
 
         user = get_current_user()
         assert user is not None
-        payload: dict[str, Any] = request.get_json(force=True)
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
+        errors = validate_task_payload(payload)
+        if errors:
+            return jsonify({"error": "Validation failed", "details": errors}), 400
         task = build_task_from_payload(payload, user)
         db.session.add(task)
         db.session.commit()
@@ -327,8 +401,16 @@ def create_app() -> Flask:
 
         user = get_current_user()
         assert user is not None
-        task = Task.query.filter_by(id=task_id, user_id=user.id).first_or_404()
-        payload: dict[str, Any] = request.get_json(force=True)
+        task = Task.query.filter_by(id=task_id, user_id=user.id).first()
+        if task is None:
+            return jsonify({"error": "Task not found"}), 404
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
+        errors = validate_task_payload(payload, partial=True)
+        if errors:
+            return jsonify({"error": "Validation failed", "details": errors}), 400
         update_task_from_payload(task, payload)
         db.session.commit()
         return jsonify(task.to_dict())
@@ -340,10 +422,12 @@ def create_app() -> Flask:
 
         user = get_current_user()
         assert user is not None
-        task = Task.query.filter_by(id=task_id, user_id=user.id).first_or_404()
+        task = Task.query.filter_by(id=task_id, user_id=user.id).first()
+        if task is None:
+            return jsonify({"error": "Task not found"}), 404
         db.session.delete(task)
         db.session.commit()
-        return jsonify({"ok": True})
+        return jsonify({"ok": True}), 200
 
     @app.put("/api/settings")
     @require_login
@@ -353,7 +437,10 @@ def create_app() -> Flask:
         user = get_current_user()
         assert user is not None
         setting = get_or_create_settings(user)
-        payload: dict[str, Any] = request.get_json(force=True)
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
         update_settings_from_payload(setting, payload)
         db.session.commit()
         return jsonify(setting.to_dict())
