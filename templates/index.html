@@ -7,10 +7,11 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">Skip to main content</a>
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" aria-label="Primary">
       <div class="brand">⚛️ <span>CSIR NET Tracker</span></div>
-      <nav class="nav-links">
+      <nav class="nav-links" aria-label="Sections">
         <a href="#dashboard" data-route="dashboard" class="active">Dashboard</a>
         <a href="#plan" data-route="plan">60-Day Plan</a>
         <a href="#routine" data-route="routine">Daily Routine</a>
@@ -21,7 +22,7 @@
         <a href="#resources" data-route="resources">Resources</a>
         <a href="#settings" data-route="settings">Settings</a>
       </nav>
-      <div class="sidebar-footer">
+      <div class="sidebar-footer" aria-live="polite">
         <p id="daysComplete">0/60</p>
         <small>DAYS COMPLETE</small>
         <p id="trackedMinutes">0m</p>
@@ -29,21 +30,21 @@
       </div>
     </aside>
 
-    <main class="content">
-      <div class="timer-widget">
+    <main id="mainContent" class="content">
+      <div class="timer-widget" role="region" aria-label="Study timer">
         <h3 id="timerDisplay">00:00:00</h3>
         <p>STUDY TIME</p>
-        <div class="timer-actions">
-          <button id="timerStart">▶</button>
-          <button id="timerPause">⏸</button>
-          <button id="timerReset">⏹</button>
+        <div class="timer-actions" aria-label="Timer actions">
+          <button id="timerStart" type="button" aria-label="Start timer">▶</button>
+          <button id="timerPause" type="button" aria-label="Pause timer">⏸</button>
+          <button id="timerReset" type="button" aria-label="Reset timer">⏹</button>
         </div>
       </div>
 
       <section id="dashboardView" class="view active">
         <h1>Dashboard</h1>
 
-        <div class="status-strip">
+        <div class="status-strip" role="status" aria-live="polite">
           <span id="lastLogin">Last Login: Just now</span>
           <span id="currentDate"></span>
           <span id="streakText">Study Streak: 0 days</span>
@@ -53,7 +54,7 @@
           <div>
             <h2>CSIR NET Exam Countdown</h2>
           </div>
-          <div class="countdown-values">
+          <div class="countdown-values" aria-label="Exam countdown values">
             <div><strong id="countDays">00</strong><span>DAYS</span></div>
             <div><strong id="countHours">00</strong><span>HOURS</span></div>
             <div><strong id="countMinutes">00</strong><span>MINUTES</span></div>
@@ -68,22 +69,57 @@
         <h1>60-Day Plan</h1>
         <p class="subtitle">Create and track unit-wise tasks with due dates.</p>
 
-        <form id="taskForm" class="panel form-grid">
-          <input id="taskTitle" type="text" placeholder="Task title" required />
-          <select id="taskUnit" required></select>
-          <select id="taskTopic" required></select>
-          <select id="taskPriority">
-            <option>High</option>
-            <option selected>Medium</option>
-            <option>Low</option>
-          </select>
-          <input id="taskDueDate" type="date" />
-          <input id="taskNotes" type="text" placeholder="Notes (optional)" />
+        <form id="taskForm" class="panel form-grid" aria-labelledby="taskFormHeading">
+          <h2 id="taskFormHeading" class="sr-only">Add a new task</h2>
+
+          <div class="field-group">
+            <label for="taskTitle">Task title</label>
+            <input id="taskTitle" type="text" placeholder="Task title" autocomplete="off" required />
+          </div>
+
+          <div class="field-group">
+            <label for="taskUnit">Unit</label>
+            <select id="taskUnit" required></select>
+          </div>
+
+          <div class="field-group">
+            <label for="taskTopic">Topic</label>
+            <select id="taskTopic" required></select>
+          </div>
+
+          <div class="field-group">
+            <label for="taskPriority">Priority</label>
+            <select id="taskPriority" aria-describedby="priorityHelp">
+              <option>High</option>
+              <option selected>Medium</option>
+              <option>Low</option>
+            </select>
+            <small id="priorityHelp" class="helper-text">High priority tasks are shown with stronger visual emphasis.</small>
+          </div>
+
+          <div class="field-group">
+            <label for="taskDueDate">Due date</label>
+            <input id="taskDueDate" type="date" />
+          </div>
+
+          <div class="field-group">
+            <label for="taskNotes">Notes (optional)</label>
+            <input id="taskNotes" type="text" placeholder="Notes (optional)" />
+          </div>
+
           <button type="submit">Add Task</button>
         </form>
 
+        <label class="sr-only" for="taskSearch">Search tasks</label>
         <input id="taskSearch" class="search-input" type="search" placeholder="Search by title, topic, or unit" />
-        <div id="taskList" class="task-list"></div>
+
+        <div class="priority-legend" aria-label="Task priority legend">
+          <span class="badge high">High priority</span>
+          <span class="badge medium">Medium priority</span>
+          <span class="badge low">Low priority</span>
+        </div>
+
+        <div id="taskList" class="task-list" aria-live="polite"></div>
       </section>
 
       <section id="routineView" class="view">
@@ -146,14 +182,18 @@
         <h1>Settings</h1>
         <p class="subtitle">Set exam date, daily goal, and theme.</p>
         <form id="settingsForm" class="panel form-grid compact">
-          <label>Exam date <input id="settingExamDate" type="date" /></label>
-          <label>Daily goal (tasks) <input id="settingDailyGoal" type="number" min="1" max="20" /></label>
-          <label>Theme
-            <select id="settingTheme">
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </label>
+          <label for="settingExamDate">Exam date</label>
+          <input id="settingExamDate" type="date" />
+
+          <label for="settingDailyGoal">Daily goal (tasks)</label>
+          <input id="settingDailyGoal" type="number" min="1" max="20" />
+
+          <label for="settingTheme">Theme</label>
+          <select id="settingTheme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+
           <button type="submit">Save Settings</button>
         </form>
         <p id="settingsMessage" class="subtitle"></p>
