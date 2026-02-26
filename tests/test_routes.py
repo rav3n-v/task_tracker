@@ -25,7 +25,9 @@ def _create_task(
 
 
 def _admin_login(client, username="admin", password="admin123"):
-    return client.post("/api/admin/login", json={"username": username, "password": password})
+    return client.post(
+        "/api/admin/login", json={"username": username, "password": password}
+    )
 
 
 def test_index_route_renders_template(client, monkeypatch):
@@ -282,7 +284,9 @@ def test_progress_uses_unit_breakdown_helper(auth_client, monkeypatch):
 
 
 def test_register_requires_admin_auth(client):
-    response = client.post("/api/register", json={"username": "alice", "password": "secret"})
+    response = client.post(
+        "/api/register", json={"username": "alice", "password": "secret"}
+    )
     assert response.status_code == 403
 
 
