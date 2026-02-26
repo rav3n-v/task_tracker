@@ -8,9 +8,30 @@
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to main content</a>
-  <div class="layout">
+  <section id="authGate" class="auth-gate">
+    <h1>Welcome to CSIR NET Tracker</h1>
+    <p class="subtitle">Register or login to access your personal task board.</p>
+    <div class="auth-grid">
+      <form id="loginForm" class="panel form-grid compact">
+        <h2>Login</h2>
+        <label for="loginUsername">Username</label><input id="loginUsername" name="username" required />
+        <label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required />
+        <button type="submit">Login</button>
+      </form>
+      <form id="registerForm" class="panel form-grid compact">
+        <h2>Register</h2>
+        <label for="registerUsername">Username</label><input id="registerUsername" name="username" required />
+        <label for="registerPassword">Password</label><input id="registerPassword" name="password" type="password" required />
+        <button type="submit">Create account</button>
+      </form>
+    </div>
+    <p id="authMessage" class="subtitle"></p>
+  </section>
+
+  <div id="appLayout" class="layout" hidden>
     <aside class="sidebar" aria-label="Primary">
       <div class="brand">⚛️ <span>CSIR NET Tracker</span></div>
+      <div class="auth-userbar"><span id="userDisplay"></span><button id="logoutBtn" type="button">Logout</button></div>
       <nav class="nav-links" aria-label="Sections">
         <a href="#dashboard" data-route="dashboard" class="active">Dashboard</a>
         <a href="#plan" data-route="plan">60-Day Plan</a>

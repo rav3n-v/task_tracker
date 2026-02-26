@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, session
+from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "tracker.db"
@@ -16,12 +19,35 @@ DATE_FORMAT = "%Y-%m-%d"
 
 # SQLAlchemy instance configured by create_app.
 db = SQLAlchemy()
+migrate = Migrate()
+
+
+class User(db.Model):
+    """Database model for user accounts."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    tasks = db.relationship("Task", back_populates="user", cascade="all, delete-orphan")
+    settings = db.relationship("Setting", back_populates="user", cascade="all, delete-orphan", uselist=False)
+
+    def set_password(self, password: str) -> None:
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        return check_password_hash(self.password_hash, password)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"id": self.id, "username": self.username}
 
 
 class Task(db.Model):
     """Database model representing one study task."""
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     title = db.Column(db.String(160), nullable=False)
     unit = db.Column(db.String(120), nullable=False)
     topic = db.Column(db.String(180), nullable=False)
@@ -30,6 +56,8 @@ class Task(db.Model):
     notes = db.Column(db.Text, default="")
     completed = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User", back_populates="tasks")
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation of this task."""
@@ -48,12 +76,15 @@ class Task(db.Model):
 
 
 class Setting(db.Model):
-    """Database model for singleton app settings."""
+    """Database model for user-specific app settings."""
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True)
     exam_date = db.Column(db.Date, nullable=True)
     daily_goal = db.Column(db.Integer, default=DEFAULT_DAILY_GOAL)
     theme = db.Column(db.String(20), default=DEFAULT_THEME)
+
+    user = db.relationship("User", back_populates="settings")
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation of settings."""
@@ -133,21 +164,39 @@ def parse_optional_date(date_value: str | None) -> date | None:
     return datetime.strptime(date_value, DATE_FORMAT).date() if date_value else None
 
 
-def get_or_create_settings() -> Setting:
-    """Fetch the singleton settings row, creating it when absent."""
+def get_current_user() -> User | None:
+    user_id = session.get("user_id")
+    if user_id is None:
+        return None
+    return db.session.get(User, user_id)
 
-    setting = Setting.query.first()
+
+def require_login(view: Callable[..., Response | tuple[Response, int] | str]) -> Callable[..., Response | tuple[Response, int] | str]:
+    @wraps(view)
+    def wrapped(*args: Any, **kwargs: Any) -> Response | tuple[Response, int] | str:
+        if get_current_user() is None:
+            return jsonify({"error": "Authentication required"}), 401
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def get_or_create_settings(user: User) -> Setting:
+    """Fetch the user's settings row, creating it when absent."""
+
+    setting = Setting.query.filter_by(user_id=user.id).first()
     if setting is None:
-        setting = Setting()
+        setting = Setting(user_id=user.id)
         db.session.add(setting)
         db.session.commit()
     return setting
 
 
-def build_task_from_payload(payload: dict[str, Any]) -> Task:
+def build_task_from_payload(payload: dict[str, Any], user: User) -> Task:
     """Create a Task model from API payload values."""
 
     return Task(
+        user_id=user.id,
         title=str(payload["title"]).strip(),
         unit=str(payload["unit"]),
         topic=str(payload["topic"]),
@@ -192,11 +241,10 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["SECRET_KEY"] = "dev-secret-key"
     db.init_app(app)
+    migrate.init_app(app, db)
 
-    with app.app_context():
-        db.create_all()
-        get_or_create_settings()
 
     @app.get("/")
     def render_index() -> str:
@@ -204,62 +252,123 @@ def create_app() -> Flask:
 
         return render_template("index.html", syllabus=SYLLABUS)
 
+    @app.get("/api/me")
+    def get_me() -> Response:
+        user = get_current_user()
+        return jsonify({"user": user.to_dict() if user else None})
+
+    @app.post("/api/register")
+    def register() -> tuple[Response, int]:
+        payload: dict[str, Any] = request.get_json(force=True)
+        username = str(payload["username"]).strip()
+        password = str(payload["password"])
+
+        if not username or not password:
+            return jsonify({"error": "Username and password are required"}), 400
+
+        if User.query.filter_by(username=username).first() is not None:
+            return jsonify({"error": "Username already exists"}), 409
+
+        user = User(username=username)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        get_or_create_settings(user)
+        session["user_id"] = user.id
+        return jsonify({"user": user.to_dict()}), 201
+
+    @app.post("/api/login")
+    def login() -> tuple[Response, int]:
+        payload: dict[str, Any] = request.get_json(force=True)
+        username = str(payload["username"]).strip()
+        password = str(payload["password"])
+
+        user = User.query.filter_by(username=username).first()
+        if user is None or not user.check_password(password):
+            return jsonify({"error": "Invalid username or password"}), 401
+
+        session["user_id"] = user.id
+        return jsonify({"user": user.to_dict()}), 200
+
+    @app.post("/api/logout")
+    def logout() -> Response:
+        session.pop("user_id", None)
+        return jsonify({"ok": True})
+
     @app.get("/api/bootstrap")
+    @require_login
     def get_bootstrap_data() -> Response:
         """Return tasks, settings, and syllabus for initial client load."""
 
-        task_models = Task.query.order_by(Task.created_at.desc()).all()
+        user = get_current_user()
+        assert user is not None
+        task_models = Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
         tasks = [task.to_dict() for task in task_models]
-        setting = get_or_create_settings().to_dict()
-        return jsonify({"tasks": tasks, "settings": setting, "syllabus": SYLLABUS})
+        setting = get_or_create_settings(user).to_dict()
+        return jsonify({"tasks": tasks, "settings": setting, "syllabus": SYLLABUS, "user": user.to_dict()})
 
     @app.post("/api/tasks")
+    @require_login
     def create_task() -> tuple[Response, int]:
         """Create a task from JSON payload and persist it."""
 
+        user = get_current_user()
+        assert user is not None
         payload: dict[str, Any] = request.get_json(force=True)
-        task = build_task_from_payload(payload)
+        task = build_task_from_payload(payload, user)
         db.session.add(task)
         db.session.commit()
         return jsonify(task.to_dict()), 201
 
     @app.patch("/api/tasks/<int:task_id>")
+    @require_login
     def update_task(task_id: int) -> Response:
         """Update mutable task fields for a specific task."""
 
-        task = Task.query.get_or_404(task_id)
+        user = get_current_user()
+        assert user is not None
+        task = Task.query.filter_by(id=task_id, user_id=user.id).first_or_404()
         payload: dict[str, Any] = request.get_json(force=True)
         update_task_from_payload(task, payload)
         db.session.commit()
         return jsonify(task.to_dict())
 
     @app.delete("/api/tasks/<int:task_id>")
+    @require_login
     def delete_task(task_id: int) -> Response:
         """Delete a task by id."""
 
-        task = Task.query.get_or_404(task_id)
+        user = get_current_user()
+        assert user is not None
+        task = Task.query.filter_by(id=task_id, user_id=user.id).first_or_404()
         db.session.delete(task)
         db.session.commit()
         return jsonify({"ok": True})
 
     @app.put("/api/settings")
+    @require_login
     def update_settings() -> Response:
         """Update user settings and return persisted state."""
 
-        setting = get_or_create_settings()
+        user = get_current_user()
+        assert user is not None
+        setting = get_or_create_settings(user)
         payload: dict[str, Any] = request.get_json(force=True)
         update_settings_from_payload(setting, payload)
         db.session.commit()
         return jsonify(setting.to_dict())
 
     @app.get("/api/progress")
+    @require_login
     def get_progress() -> Response:
         """Return aggregate progress metrics and exam countdown."""
 
-        tasks = Task.query.all()
+        user = get_current_user()
+        assert user is not None
+        tasks = Task.query.filter_by(user_id=user.id).all()
         total = len(tasks)
         completed = sum(task.completed for task in tasks)
-        exam_date = get_or_create_settings().exam_date
+        exam_date = get_or_create_settings(user).exam_date
         days_left = (exam_date - date.today()).days if exam_date else None
 
         return jsonify(
