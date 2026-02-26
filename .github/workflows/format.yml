@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt black
+          pip install -r requirements.txt black==24.10.0
 
       - name: Check formatting with black
-        run: black --check .
+        run: black --required-version 24.10.0 --check .
