@@ -372,3 +372,13 @@ def test_admin_session_login_logout_flow(client):
     logout = client.post("/api/admin/logout")
     assert logout.status_code == 200
     assert client.get("/api/admin/session").get_json()["is_admin"] is False
+
+
+def test_dashboard_includes_server_side_context_values(auth_client):
+    response = auth_client.get("/dashboard")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert 'Study Streak:' in body
+    assert 'window.APP_CONFIG' in body
+    assert 'countDays' in body
