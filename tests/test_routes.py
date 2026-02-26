@@ -86,6 +86,32 @@ def test_dashboard_requires_login_redirect(client):
     assert response.headers["Location"].endswith("/login")
 
 
+def test_sidebar_page_routes_require_login(client):
+    for path in [
+        "/plan",
+        "/routine",
+        "/session",
+        "/tests",
+        "/downloads",
+        "/analytics",
+        "/resources",
+        "/settings",
+    ]:
+        response = client.get(path)
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith("/login")
+
+
+def test_dashboard_template_uses_route_links(auth_client):
+    response = auth_client.get("/dashboard")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert 'href="/dashboard"' in body
+    assert 'href="/downloads"' in body
+    assert 'href="#downloads"' not in body
+
+
 def test_login_form_redirects_to_dashboard_on_success(client):
     _admin_login(client)
     client.post("/api/register", json={"username": "alice", "password": "secret"})
