@@ -1,6 +1,12 @@
 # CSIR NET Mathematics Task Tracker (Flask)
 
+[![Lint](https://github.com/YOUR_GITHUB_USERNAME/task_tracker/actions/workflows/lint.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/task_tracker/actions/workflows/lint.yml)
+[![Tests](https://github.com/YOUR_GITHUB_USERNAME/task_tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/task_tracker/actions/workflows/tests.yml)
+[![Format](https://github.com/YOUR_GITHUB_USERNAME/task_tracker/actions/workflows/format.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/task_tracker/actions/workflows/format.yml)
+
 A full-featured study planner and task tracker tailored to the CSIR NET Mathematics syllabus.
+
+> Note: Replace `YOUR_GITHUB_USERNAME/task_tracker` in badge links with your actual GitHub repository path.
 
 ## Features
 - User authentication (register, login, logout) with hashed passwords.

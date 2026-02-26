@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
-import sys
-
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import create_app, db
 
@@ -39,5 +34,5 @@ def client(app):
 
 @pytest.fixture()
 def auth_client(client):
-    client.post('/api/register', json={'username': 'alice', 'password': 'password123'})
+    client.post("/api/register", json={"username": "alice", "password": "password123"})
     return client
