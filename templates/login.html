@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Login - CSIR NET Tracker</title>
+  <title>Login - CSIR NET Tracker</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
 </head>
 <body>
   <section class="auth-gate">
-    <h1>Admin Login</h1>
-    <p class="subtitle">Login as admin to create user accounts.</p>
+    <h1>Welcome to CSIR NET Tracker</h1>
+    <p class="subtitle">Login to access your personal task board.</p>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -22,10 +22,10 @@
     {% endwith %}
 
     <div class="auth-grid single">
-      <form class="panel form-grid compact" action="{{ url_for('admin_login_page_submit') }}" method="post">
-        <h2>Admin Login</h2>
-        <label for="adminUsername">Username</label><input id="adminUsername" name="username" required />
-        <label for="adminPassword">Password</label><input id="adminPassword" name="password" type="password" required />
+      <form class="panel form-grid compact" action="{{ url_for('login_page_submit') }}" method="post">
+        <h2>Login</h2>
+        <label for="loginUsername">Username</label><input id="loginUsername" name="username" required />
+        <label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required />
         <button type="submit">Login</button>
       </form>
     </div>

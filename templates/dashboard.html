@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSIR NET Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">Skip to main content</a>
+  
+
+  <div id="appLayout" class="layout">
+    <aside class="sidebar" aria-label="Primary">
+      <div class="brand">⚛️ <span>CSIR NET Tracker</span></div>
+      <div class="auth-userbar"><span id="userDisplay"></span><button id="logoutBtn" type="button">Logout</button></div>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#dashboard" data-route="dashboard" class="active">Dashboard</a>
+        <a href="#plan" data-route="plan">60-Day Plan</a>
+        <a href="#routine" data-route="routine">Daily Routine</a>
+        <a href="#session" data-route="session">Study Session</a>
+        <a href="#tests" data-route="tests">Practice Tests</a>
+        <a href="#downloads" data-route="downloads">Downloads</a>
+        <a href="#analytics" data-route="analytics">Analytics</a>
+        <a href="#resources" data-route="resources">Resources</a>
+        <a href="#settings" data-route="settings">Settings</a>
+      </nav>
+      <div class="sidebar-footer" aria-live="polite">
+        <p id="daysComplete">0/60</p>
+        <small>DAYS COMPLETE</small>
+        <p id="trackedMinutes">0m</p>
+        <small>TOTAL TRACKED</small>
+      </div>
+    </aside>
+
+    <main id="mainContent" class="content">
+      <div class="timer-widget" role="region" aria-label="Study timer">
+        <h3 id="timerDisplay">00:00:00</h3>
+        <p>STUDY TIME</p>
+        <div class="timer-actions" aria-label="Timer actions">
+          <button id="timerStart" type="button" aria-label="Start timer">▶</button>
+          <button id="timerPause" type="button" aria-label="Pause timer">⏸</button>
+          <button id="timerReset" type="button" aria-label="Reset timer">⏹</button>
+        </div>
+      </div>
+
+      <section id="dashboardView" class="view active">
+        <h1>Dashboard</h1>
+
+        <div class="status-strip" role="status" aria-live="polite">
+          <span id="lastLogin">Last Login: Just now</span>
+          <span id="currentDate"></span>
+          <span id="streakText">Study Streak: 0 days</span>
+        </div>
+
+        <article class="countdown-card">
+          <div>
+            <h2>CSIR NET Exam Countdown</h2>
+          </div>
+          <div class="countdown-values" aria-label="Exam countdown values">
+            <div><strong id="countDays">00</strong><span>DAYS</span></div>
+            <div><strong id="countHours">00</strong><span>HOURS</span></div>
+            <div><strong id="countMinutes">00</strong><span>MINUTES</span></div>
+          </div>
+          <div class="target-date" id="targetDate">Target Exam: Not set</div>
+        </article>
+
+        <div class="cards-grid" id="dashboardCards"></div>
+      </section>
+
+      <section id="planView" class="view">
+        <h1>60-Day Plan</h1>
+        <p class="subtitle">Create and track unit-wise tasks with due dates.</p>
+
+        <form id="taskForm" class="panel form-grid" aria-labelledby="taskFormHeading">
+          <h2 id="taskFormHeading" class="sr-only">Add a new task</h2>
+
+          <div class="field-group">
+            <label for="taskTitle">Task title</label>
+            <input id="taskTitle" type="text" placeholder="Task title" autocomplete="off" required />
+          </div>
+
+          <div class="field-group">
+            <label for="taskUnit">Unit</label>
+            <select id="taskUnit" required></select>
+          </div>
+
+          <div class="field-group">
+            <label for="taskTopic">Topic</label>
+            <select id="taskTopic" required></select>
+          </div>
+
+          <div class="field-group">
+            <label for="taskPriority">Priority</label>
+            <select id="taskPriority" aria-describedby="priorityHelp">
+              <option>High</option>
+              <option selected>Medium</option>
+              <option>Low</option>
+            </select>
+            <small id="priorityHelp" class="helper-text">High priority tasks are shown with stronger visual emphasis.</small>
+          </div>
+
+          <div class="field-group">
+            <label for="taskDueDate">Due date</label>
+            <input id="taskDueDate" type="date" />
+          </div>
+
+          <div class="field-group">
+            <label for="taskNotes">Notes (optional)</label>
+            <input id="taskNotes" type="text" placeholder="Notes (optional)" />
+          </div>
+
+          <button type="submit">Add Task</button>
+        </form>
+
+        <label class="sr-only" for="taskSearch">Search tasks</label>
+        <input id="taskSearch" class="search-input" type="search" placeholder="Search by title, topic, or unit" />
+
+        <div class="priority-legend" aria-label="Task priority legend">
+          <span class="badge high">High priority</span>
+          <span class="badge medium">Medium priority</span>
+          <span class="badge low">Low priority</span>
+        </div>
+
+        <div id="taskList" class="task-list" aria-live="polite"></div>
+      </section>
+
+      <section id="routineView" class="view">
+        <h1>Daily Routine Planner</h1>
+        <p class="subtitle">Track your daily schedule and study hours</p>
+
+        <div class="two-stats">
+          <article><h3 id="hoursToday">0</h3><p>Hours Studied Today</p></article>
+          <article><h3 id="hoursWeek">0</h3><p>Hours This Week</p></article>
+        </div>
+
+        <div id="routineList" class="routine-list"></div>
+      </section>
+
+      <section id="sessionView" class="view">
+        <h1>Study Session</h1>
+        <p class="subtitle">Use the timer and complete routine tasks to maintain focus.</p>
+        <div class="panel">
+          <p>Tip: Start the timer before each focused study block and mark routine checkboxes as you complete them.</p>
+        </div>
+      </section>
+
+      <section id="testsView" class="view">
+        <h1>Practice Tests</h1>
+        <p class="subtitle">Track your mock test attempts.</p>
+        <div id="testStats" class="cards-grid"></div>
+      </section>
+
+      <section id="downloadsView" class="view">
+        <h1>Downloads</h1>
+        <p class="subtitle">Quick links to useful files.</p>
+        <div class="panel list-grid" id="downloadList"></div>
+      </section>
+
+      <section id="analyticsView" class="view">
+        <h1>Advanced Analytics</h1>
+        <p class="subtitle">Detailed insights into your preparation with predictive analysis</p>
+
+        <div class="three-stats" id="analyticsStats"></div>
+
+        <div class="charts-grid">
+          <article>
+            <h2>Daily Study Hours Trend</h2>
+            <div id="hoursTrend" class="bar-chart"></div>
+          </article>
+          <article>
+            <h2>Study Consistency</h2>
+            <div id="consistencyTrend" class="line-chart"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="resourcesView" class="view">
+        <h1>Resources</h1>
+        <p class="subtitle">Important topics organized by syllabus unit.</p>
+        <div id="resourceList" class="panel list-grid"></div>
+      </section>
+
+      <section id="settingsView" class="view">
+        <h1>Settings</h1>
+        <p class="subtitle">Set exam date, daily goal, and theme.</p>
+        <form id="settingsForm" class="panel form-grid compact">
+          <label for="settingExamDate">Exam date</label>
+          <input id="settingExamDate" type="date" />
+
+          <label for="settingDailyGoal">Daily goal (tasks)</label>
+          <input id="settingDailyGoal" type="number" min="1" max="20" />
+
+          <label for="settingTheme">Theme</label>
+          <select id="settingTheme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+
+          <button type="submit">Save Settings</button>
+        </form>
+        <p id="settingsMessage" class="subtitle"></p>
+      </section>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
