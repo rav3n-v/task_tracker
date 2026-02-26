@@ -64,6 +64,28 @@
         <div class="cards-grid" id="dashboardCards"></div>
       </section>
 
+      <section id="planView" class="view">
+        <h1>60-Day Plan</h1>
+        <p class="subtitle">Create and track unit-wise tasks with due dates.</p>
+
+        <form id="taskForm" class="panel form-grid">
+          <input id="taskTitle" type="text" placeholder="Task title" required />
+          <select id="taskUnit" required></select>
+          <select id="taskTopic" required></select>
+          <select id="taskPriority">
+            <option>High</option>
+            <option selected>Medium</option>
+            <option>Low</option>
+          </select>
+          <input id="taskDueDate" type="date" />
+          <input id="taskNotes" type="text" placeholder="Notes (optional)" />
+          <button type="submit">Add Task</button>
+        </form>
+
+        <input id="taskSearch" class="search-input" type="search" placeholder="Search by title, topic, or unit" />
+        <div id="taskList" class="task-list"></div>
+      </section>
+
       <section id="routineView" class="view">
         <h1>Daily Routine Planner</h1>
         <p class="subtitle">Track your daily schedule and study hours</p>
@@ -74,6 +96,26 @@
         </div>
 
         <div id="routineList" class="routine-list"></div>
+      </section>
+
+      <section id="sessionView" class="view">
+        <h1>Study Session</h1>
+        <p class="subtitle">Use the timer and complete routine tasks to maintain focus.</p>
+        <div class="panel">
+          <p>Tip: Start the timer before each focused study block and mark routine checkboxes as you complete them.</p>
+        </div>
+      </section>
+
+      <section id="testsView" class="view">
+        <h1>Practice Tests</h1>
+        <p class="subtitle">Track your mock test attempts.</p>
+        <div id="testStats" class="cards-grid"></div>
+      </section>
+
+      <section id="downloadsView" class="view">
+        <h1>Downloads</h1>
+        <p class="subtitle">Quick links to useful files.</p>
+        <div class="panel list-grid" id="downloadList"></div>
       </section>
 
       <section id="analyticsView" class="view">
@@ -94,9 +136,27 @@
         </div>
       </section>
 
-      <section id="placeholderView" class="view">
-        <h1 id="placeholderTitle">Module</h1>
-        <p class="subtitle">This module is scaffolded and can be expanded next.</p>
+      <section id="resourcesView" class="view">
+        <h1>Resources</h1>
+        <p class="subtitle">Important topics organized by syllabus unit.</p>
+        <div id="resourceList" class="panel list-grid"></div>
+      </section>
+
+      <section id="settingsView" class="view">
+        <h1>Settings</h1>
+        <p class="subtitle">Set exam date, daily goal, and theme.</p>
+        <form id="settingsForm" class="panel form-grid compact">
+          <label>Exam date <input id="settingExamDate" type="date" /></label>
+          <label>Daily goal (tasks) <input id="settingDailyGoal" type="number" min="1" max="20" /></label>
+          <label>Theme
+            <select id="settingTheme">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </label>
+          <button type="submit">Save Settings</button>
+        </form>
+        <p id="settingsMessage" class="subtitle"></p>
       </section>
     </main>
   </div>

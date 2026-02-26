@@ -1,14 +1,16 @@
 const state = {
   tasks: [],
   settings: {},
+  syllabus: {},
   progress: null,
   timerSeconds: 0,
   timerHandle: null,
+  search: '',
 };
 
 const routineTemplate = [
   { id: 'r1', time: '5:00 AM - 5:30 AM', task: 'Wake up, Exercise, Wash up', tag: 'Physical', minutes: 30 },
-  { id: 'r2', time: '6:00 AM - 7:00 AM', task: 'Practise General/ Part A', tag: 'Study', minutes: 60 },
+  { id: 'r2', time: '6:00 AM - 7:00 AM', task: 'Practise General / Part A', tag: 'Study', minutes: 60 },
   { id: 'r3', time: '7:00 AM - 8:30 AM', task: 'Fresh up, Breakfast', tag: 'Nutrition', minutes: 90 },
   { id: 'r4', time: '8:30 AM - 9:30 AM', task: 'Previous day revision', tag: 'Study', minutes: 60 },
   { id: 'r5', time: '9:30 AM - 12:30 PM', task: 'Core Study Session 1', tag: 'Study', minutes: 180 },
@@ -16,15 +18,25 @@ const routineTemplate = [
   { id: 'r7', time: '1:30 PM - 4:30 PM', task: 'Core Study Session 2', tag: 'Study', minutes: 180 },
 ];
 
+const resourceLinks = [
+  { title: 'NPTEL Mathematics Lectures', url: 'https://nptel.ac.in/course.html' },
+  { title: 'IIT JAM / CSIR Previous Papers', url: 'https://archive.org' },
+  { title: 'MIT OpenCourseWare Mathematics', url: 'https://ocw.mit.edu/search/?d=Mathematics' },
+];
+
 const el = {
   navLinks: document.querySelectorAll('.nav-links a'),
   views: {
     dashboard: document.getElementById('dashboardView'),
+    plan: document.getElementById('planView'),
     routine: document.getElementById('routineView'),
+    session: document.getElementById('sessionView'),
+    tests: document.getElementById('testsView'),
+    downloads: document.getElementById('downloadsView'),
     analytics: document.getElementById('analyticsView'),
-    placeholder: document.getElementById('placeholderView'),
+    resources: document.getElementById('resourcesView'),
+    settings: document.getElementById('settingsView'),
   },
-  placeholderTitle: document.getElementById('placeholderTitle'),
   dashboardCards: document.getElementById('dashboardCards'),
   currentDate: document.getElementById('currentDate'),
   streakText: document.getElementById('streakText'),
@@ -44,6 +56,23 @@ const el = {
   timerStart: document.getElementById('timerStart'),
   timerPause: document.getElementById('timerPause'),
   timerReset: document.getElementById('timerReset'),
+  taskForm: document.getElementById('taskForm'),
+  taskTitle: document.getElementById('taskTitle'),
+  taskUnit: document.getElementById('taskUnit'),
+  taskTopic: document.getElementById('taskTopic'),
+  taskPriority: document.getElementById('taskPriority'),
+  taskDueDate: document.getElementById('taskDueDate'),
+  taskNotes: document.getElementById('taskNotes'),
+  taskSearch: document.getElementById('taskSearch'),
+  taskList: document.getElementById('taskList'),
+  testStats: document.getElementById('testStats'),
+  downloadList: document.getElementById('downloadList'),
+  resourceList: document.getElementById('resourceList'),
+  settingsForm: document.getElementById('settingsForm'),
+  settingExamDate: document.getElementById('settingExamDate'),
+  settingDailyGoal: document.getElementById('settingDailyGoal'),
+  settingTheme: document.getElementById('settingTheme'),
+  settingsMessage: document.getElementById('settingsMessage'),
 };
 
 async function request(url, options = {}) {
@@ -92,18 +121,13 @@ function formatDuration(totalSeconds) {
 }
 
 function setRoute(route) {
-  const active = ['dashboard', 'routine', 'analytics'].includes(route) ? route : 'placeholder';
+  const active = Object.hasOwn(el.views, route) ? route : 'dashboard';
   Object.values(el.views).forEach((view) => view.classList.remove('active'));
   el.views[active].classList.add('active');
 
   el.navLinks.forEach((link) => {
-    link.classList.toggle('active', link.dataset.route === route);
+    link.classList.toggle('active', link.dataset.route === active);
   });
-
-  if (active === 'placeholder') {
-    const link = [...el.navLinks].find((item) => item.dataset.route === route);
-    el.placeholderTitle.textContent = link ? link.textContent : 'Module';
-  }
 }
 
 function handleRoute() {
@@ -255,7 +279,7 @@ function renderAnalytics() {
 
   const maxMin = Math.max(...series.map((item) => item.minutes), 60);
   el.hoursTrend.innerHTML = series.map((item) => {
-    const h = Math.max(6, (item.minutes / maxMin) * 180);
+    const h = Math.max(6, (item.minutes / maxMin) * 160);
     return `<div class="bar" style="height:${h}px;background:#2eb8d8;"><span>${item.day}</span></div>`;
   }).join('');
 
@@ -270,6 +294,156 @@ function renderAnalytics() {
   consistencyText.style.color = '#8d98ad';
   consistencyText.style.marginTop = '1.2rem';
   el.consistencyTrend.appendChild(consistencyText);
+}
+
+function populateSyllabus() {
+  const units = Object.keys(state.syllabus);
+  el.taskUnit.innerHTML = units.map((unit) => `<option value="${unit}">${unit}</option>`).join('');
+  updateTopicOptions();
+
+  el.taskUnit.addEventListener('change', updateTopicOptions);
+}
+
+function updateTopicOptions() {
+  const topics = state.syllabus[el.taskUnit.value] || [];
+  el.taskTopic.innerHTML = topics.map((topic) => `<option value="${topic}">${topic}</option>`).join('');
+}
+
+function taskMatchesSearch(task) {
+  if (!state.search) return true;
+  const bag = `${task.title} ${task.unit} ${task.topic}`.toLowerCase();
+  return bag.includes(state.search.toLowerCase());
+}
+
+function renderTasks() {
+  const ordered = [...state.tasks].sort((a, b) => Number(a.completed) - Number(b.completed));
+  const filtered = ordered.filter(taskMatchesSearch);
+  el.taskList.innerHTML = filtered.map((task) => `
+    <article class="task-item">
+      <input class="task-toggle" data-id="${task.id}" type="checkbox" ${task.completed ? 'checked' : ''} />
+      <div>
+        <strong>${task.title}</strong>
+        <div class="task-meta">${task.unit} · ${task.topic}</div>
+        <div class="task-meta">Due: ${task.due_date || 'Not set'}${task.notes ? ` · ${task.notes}` : ''}</div>
+      </div>
+      <div class="task-actions">
+        <span class="badge ${task.priority.toLowerCase()}">${task.priority}</span>
+        <button class="task-delete" data-id="${task.id}">Delete</button>
+      </div>
+    </article>
+  `).join('');
+
+  el.taskList.querySelectorAll('.task-toggle').forEach((checkbox) => {
+    checkbox.addEventListener('change', async () => {
+      await request(`/api/tasks/${checkbox.dataset.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ completed: checkbox.checked }),
+      });
+      await reloadData();
+    });
+  });
+
+  el.taskList.querySelectorAll('.task-delete').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await request(`/api/tasks/${button.dataset.id}`, { method: 'DELETE' });
+      await reloadData();
+    });
+  });
+}
+
+function renderTests() {
+  const total = state.tasks.length;
+  const completed = state.tasks.filter((item) => item.completed).length;
+  const pending = total - completed;
+  el.testStats.innerHTML = `
+    <article class="metric-card"><h3>${completed}</h3><p>Completed Mocks</p></article>
+    <article class="metric-card"><h3>${pending}</h3><p>Pending Mocks</p></article>
+    <article class="metric-card"><h3>${state.settings.daily_goal || 3}</h3><p>Daily Goal</p></article>
+  `;
+}
+
+function renderDownloads() {
+  el.downloadList.innerHTML = [
+    { title: 'Weekly revision checklist', subtitle: 'Print-friendly checklist template', url: '#' },
+    { title: 'Mock test log sheet', subtitle: 'Track score and mistakes', url: '#' },
+    { title: 'Important formula summary', subtitle: 'Compact formula handout', url: '#' },
+  ].map((item) => `
+    <article class="link-card">
+      <strong>${item.title}</strong>
+      <span class="task-meta">${item.subtitle}</span>
+      <a href="${item.url}">Download</a>
+    </article>
+  `).join('');
+}
+
+function renderResources() {
+  const syllabusRows = Object.entries(state.syllabus).slice(0, 6).map(([unit, topics]) => `
+    <article class="link-card">
+      <strong>${unit}</strong>
+      <span class="task-meta">${topics.slice(0, 2).join(' • ')}</span>
+    </article>
+  `).join('');
+
+  const links = resourceLinks.map((item) => `
+    <article class="link-card">
+      <strong>${item.title}</strong>
+      <a href="${item.url}" target="_blank" rel="noreferrer">Open resource</a>
+    </article>
+  `).join('');
+
+  el.resourceList.innerHTML = `${syllabusRows}${links}`;
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme || 'dark');
+}
+
+function renderSettingsForm() {
+  el.settingExamDate.value = state.settings.exam_date || '';
+  el.settingDailyGoal.value = state.settings.daily_goal || 3;
+  el.settingTheme.value = state.settings.theme || 'dark';
+  applyTheme(state.settings.theme);
+}
+
+function wireForms() {
+  el.taskForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await request('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: el.taskTitle.value,
+        unit: el.taskUnit.value,
+        topic: el.taskTopic.value,
+        priority: el.taskPriority.value,
+        due_date: el.taskDueDate.value || null,
+        notes: el.taskNotes.value,
+      }),
+    });
+    el.taskForm.reset();
+    updateTopicOptions();
+    await reloadData();
+  });
+
+  el.taskSearch.addEventListener('input', () => {
+    state.search = el.taskSearch.value;
+    renderTasks();
+  });
+
+  el.settingsForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    state.settings = await request('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        exam_date: el.settingExamDate.value || null,
+        daily_goal: Number(el.settingDailyGoal.value || 3),
+        theme: el.settingTheme.value,
+      }),
+    });
+    applyTheme(state.settings.theme);
+    el.settingsMessage.textContent = 'Settings saved successfully.';
+    renderCountdown();
+    renderTests();
+  });
 }
 
 function wireTimer() {
@@ -299,20 +473,33 @@ function wireTimer() {
   });
 }
 
-async function bootstrap() {
+async function reloadData() {
   const data = await request('/api/bootstrap');
   state.tasks = data.tasks;
   state.settings = data.settings;
+  state.syllabus = data.syllabus;
   state.progress = await request('/api/progress');
+
+  renderDashboard();
+  renderCountdown();
+  renderTasks();
+  renderTests();
+  renderSettingsForm();
+  renderAnalytics();
+}
+
+async function bootstrap() {
+  await reloadData();
 
   state.timerSeconds = Number(localStorage.getItem('studyTimerSeconds') || 0);
   el.timerDisplay.textContent = formatDuration(state.timerSeconds);
 
-  renderDashboard();
+  populateSyllabus();
   renderHeaderBits();
-  renderCountdown();
   renderRoutine();
-  renderAnalytics();
+  renderDownloads();
+  renderResources();
+  wireForms();
 
   setInterval(renderCountdown, 60 * 1000);
 }
