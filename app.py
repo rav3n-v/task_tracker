@@ -149,7 +149,9 @@ class DailyRoutineTask(db.Model):
 
 class SyllabusTopic(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    subject = db.Column(db.String(120), nullable=False, index=True)
+    subject_name = db.Column(db.String(120), nullable=False, index=True)
+    unit_name = db.Column(db.String(120), nullable=False, index=True)
+    weight = db.Column(db.Float, nullable=False, default=0)
     topic_name = db.Column(db.String(255), nullable=False)
 
 
@@ -171,66 +173,108 @@ class UserSyllabusProgress(db.Model):
     revision_2_done = db.Column(db.Boolean, default=False, nullable=False)
 
 
-SYLLABUS: dict[str, list[str]] = {
-    "Mathematical Analysis": [
-        "Real number system and sequences",
-        "Continuity, differentiability and Riemann integration",
-        "Series and uniform convergence",
-        "Functions of several variables and Jacobians",
-    ],
-    "Linear Algebra": [
-        "Vector spaces, basis, dimension",
-        "Linear transformations and matrix representations",
-        "Eigenvalues, eigenvectors and diagonalization",
-        "Inner product spaces and spectral theorem",
-    ],
-    "Complex Analysis": [
-        "Analytic functions and Cauchy-Riemann equations",
-        "Cauchy integral theorem and formula",
-        "Laurent series and residue calculus",
-        "Conformal mappings",
-    ],
-    "Algebra": [
-        "Groups, subgroups and quotient groups",
-        "Rings, ideals and homomorphisms",
-        "Polynomial rings and irreducibility",
-        "Fields and finite fields",
-    ],
-    "Ordinary Differential Equations": [
-        "First order equations",
-        "Linear differential equations",
-        "Existence and uniqueness theorems",
-        "Sturm-Liouville problems",
-    ],
-    "Partial Differential Equations": [
-        "First order PDEs",
-        "Second order PDE classification",
-        "Laplace, wave and heat equations",
-        "Fourier methods and boundary value problems",
-    ],
-    "Numerical Analysis": [
-        "Errors and floating point arithmetic",
-        "Interpolation and numerical differentiation",
-        "Numerical integration",
-        "Solutions of algebraic and differential equations",
-    ],
-    "Calculus of Variations": [
-        "Euler-Lagrange equations",
-        "Variational principles",
-        "Constraints and Lagrange multipliers",
-    ],
-    "Classical Mechanics": [
-        "Lagrangian and Hamiltonian formulations",
-        "Central force motion",
-        "Rigid body dynamics",
-    ],
-    "Probability and Statistics": [
-        "Random variables and distributions",
-        "Expectation and moments",
-        "Limit theorems",
-        "Estimation and hypothesis testing",
-    ],
+SUBJECT_WEIGHTAGE: dict[str, float] = {
+    "Linear Algebra": 35,
+    "Real Analysis": 35,
+    "Algebra": 25,
+    "Complex Analysis": 20,
+    "ODE/PDE": 20,
+    "Numerical Analysis": 10,
+    "Unit 2 (Classical Mechanics etc.)": 10,
+    "Unit 3 (Fluid Dynamics etc.)": 5,
+    "Other topics combined": 20,
 }
+
+
+SYLLABUS: dict[str, dict[str, list[str] | str]] = {
+    "Real Analysis": {
+        "unit_name": "Unit 1",
+        "topics": [
+            "Real number system and sequences",
+            "Continuity, differentiability and Riemann integration",
+            "Series and uniform convergence",
+            "Functions of several variables and Jacobians",
+        ],
+    },
+    "Linear Algebra": {
+        "unit_name": "Unit 1",
+        "topics": [
+            "Vector spaces, basis, dimension",
+            "Linear transformations and matrix representations",
+            "Eigenvalues, eigenvectors and diagonalization",
+            "Inner product spaces and spectral theorem",
+        ],
+    },
+    "Complex Analysis": {
+        "unit_name": "Unit 1",
+        "topics": [
+            "Analytic functions and Cauchy-Riemann equations",
+            "Cauchy integral theorem and formula",
+            "Laurent series and residue calculus",
+            "Conformal mappings",
+        ],
+    },
+    "Algebra": {
+        "unit_name": "Unit 1",
+        "topics": [
+            "Groups, subgroups and quotient groups",
+            "Rings, ideals and homomorphisms",
+            "Polynomial rings and irreducibility",
+            "Fields and finite fields",
+        ],
+    },
+    "ODE/PDE": {
+        "unit_name": "Unit 1",
+        "topics": [
+            "First order equations",
+            "Linear differential equations",
+            "Existence and uniqueness theorems",
+            "Sturm-Liouville problems",
+            "First order PDEs",
+            "Second order PDE classification",
+            "Laplace, wave and heat equations",
+            "Fourier methods and boundary value problems",
+        ],
+    },
+    "Numerical Analysis": {
+        "unit_name": "Unit 1",
+        "topics": [
+            "Errors and floating point arithmetic",
+            "Interpolation and numerical differentiation",
+            "Numerical integration",
+            "Solutions of algebraic and differential equations",
+        ],
+    },
+    "Unit 2 (Classical Mechanics etc.)": {
+        "unit_name": "Unit 2",
+        "topics": [
+            "Lagrangian and Hamiltonian formulations",
+            "Central force motion",
+            "Rigid body dynamics",
+        ],
+    },
+    "Unit 3 (Fluid Dynamics etc.)": {
+        "unit_name": "Unit 3",
+        "topics": [
+            "Fluid statics and kinematics",
+            "Euler and Navier-Stokes equations",
+            "Boundary layer basics",
+        ],
+    },
+    "Other topics combined": {
+        "unit_name": "Cross-unit",
+        "topics": [
+            "Random variables and distributions",
+            "Expectation and moments",
+            "Limit theorems",
+            "Estimation and hypothesis testing",
+            "Euler-Lagrange equations",
+            "Variational principles",
+            "Constraints and Lagrange multipliers",
+        ],
+    },
+}
+
 
 
 def parse_optional_date(date_value: str | None) -> date | None:
@@ -453,16 +497,26 @@ def calculate_countdown(target_exam: date | None) -> dict[str, int]:
 
 def seed_syllabus_topics() -> None:
     existing_topics = {
-        (topic.subject, topic.topic_name)
+        (topic.subject_name, topic.topic_name)
         for topic in SyllabusTopic.query.with_entities(
-            SyllabusTopic.subject, SyllabusTopic.topic_name
+            SyllabusTopic.subject_name, SyllabusTopic.topic_name
         ).all()
     }
     new_topics = []
-    for subject, topics in SYLLABUS.items():
+    for subject_name, details in SYLLABUS.items():
+        topics = details["topics"]
+        unit_name = str(details["unit_name"])
+        weight = SUBJECT_WEIGHTAGE[subject_name] / max(len(topics), 1)
         for topic_name in topics:
-            if (subject, topic_name) not in existing_topics:
-                new_topics.append(SyllabusTopic(subject=subject, topic_name=topic_name))
+            if (subject_name, topic_name) not in existing_topics:
+                new_topics.append(
+                    SyllabusTopic(
+                        subject_name=subject_name,
+                        unit_name=unit_name,
+                        weight=weight,
+                        topic_name=topic_name,
+                    )
+                )
     if new_topics:
         db.session.add_all(new_topics)
         db.session.commit()
@@ -497,7 +551,7 @@ def calculate_study_time_totals(user: User) -> dict[str, float]:
 
 
 def compute_syllabus_progress(user: User) -> dict[str, Any]:
-    topics = SyllabusTopic.query.order_by(SyllabusTopic.subject, SyllabusTopic.id).all()
+    topics = SyllabusTopic.query.order_by(SyllabusTopic.subject_name, SyllabusTopic.id).all()
     progress_items = UserSyllabusProgress.query.filter_by(user_id=user.id).all()
     progress_by_topic = {item.topic_id: item for item in progress_items}
     total = len(topics)
@@ -514,7 +568,7 @@ def compute_syllabus_progress(user: User) -> dict[str, Any]:
         counters["pyq"] += int(pyq)
         counters["rev1"] += int(rev1)
         counters["rev2"] += int(rev2)
-        grouped.setdefault(topic.subject, []).append(
+        grouped.setdefault(topic.subject_name, []).append(
             {
                 "topic_id": topic.id,
                 "topic_name": topic.topic_name,
@@ -532,7 +586,55 @@ def compute_syllabus_progress(user: User) -> dict[str, Any]:
         "revision_2_percent": round((counters["rev2"] / total) * 100, 1) if total else 0,
     }
 
-    return {"grouped_topics": grouped, "total_topics": total, **percentages}
+    subject_meta: dict[str, dict[str, float | str]] = {}
+    for topic in topics:
+        if topic.subject_name not in subject_meta:
+            subject_meta[topic.subject_name] = {"unit_name": topic.unit_name, "weight": 0.0}
+        subject_meta[topic.subject_name]["weight"] = float(subject_meta[topic.subject_name]["weight"]) + float(topic.weight)
+
+    subject_breakdown = []
+    for subject_name, topics_list in grouped.items():
+        topic_count = len(topics_list)
+        if not topic_count:
+            continue
+        theory_pct = (sum(1 for t in topics_list if t["theory_completed"]) / topic_count) * 100
+        pyq_pct = (sum(1 for t in topics_list if t["pyq_30_done"]) / topic_count) * 100
+        rev1_pct = (sum(1 for t in topics_list if t["revision_1_done"]) / topic_count) * 100
+        rev2_pct = (sum(1 for t in topics_list if t["revision_2_done"]) / topic_count) * 100
+        progress_score = (
+            theory_pct * 0.4
+            + pyq_pct * 0.3
+            + rev1_pct * 0.2
+            + rev2_pct * 0.1
+        ) / 100
+        subject_weight = float(subject_meta.get(subject_name, {}).get("weight", SUBJECT_WEIGHTAGE.get(subject_name, 0)))
+        subject_contribution = progress_score * subject_weight
+        subject_breakdown.append(
+            {
+                "subject_name": subject_name,
+                "unit_name": str(subject_meta.get(subject_name, {}).get("unit_name", "Unknown Unit")),
+                "weight": subject_weight,
+                "theory_percent": round(theory_pct, 1),
+                "pyq_percent": round(pyq_pct, 1),
+                "revision_1_percent": round(rev1_pct, 1),
+                "revision_2_percent": round(rev2_pct, 1),
+                "progress_score": round(progress_score * 100, 1),
+                "contribution": round(subject_contribution, 2),
+            }
+        )
+
+    subject_breakdown.sort(key=lambda item: item["weight"], reverse=True)
+    weighted_total = sum(item["contribution"] for item in subject_breakdown)
+    final_score = min(200, round(20 + weighted_total, 2))
+
+    return {
+        "grouped_topics": grouped,
+        "total_topics": total,
+        "subject_breakdown": subject_breakdown,
+        "weighted_total": round(weighted_total, 2),
+        "final_score": final_score,
+        **percentages,
+    }
 
 
 def build_dashboard_context(user: User, active_route: str) -> dict[str, Any]:
@@ -543,7 +645,7 @@ def build_dashboard_context(user: User, active_route: str) -> dict[str, Any]:
     study_totals = calculate_study_time_totals(user)
 
     return {
-        "syllabus": SYLLABUS,
+        "syllabus": {k: v["topics"] for k, v in SYLLABUS.items()},
         "active_route": active_route,
         "study_streak": calculate_study_streak(tasks),
         "total_tracked_minutes": total_tracked_minutes,
@@ -690,29 +792,21 @@ def create_app() -> Flask:
         user = get_current_user()
         assert user is not None
         data = compute_syllabus_progress(user)
-        total = data["total_topics"]
-        theory_percent = (data["theory_percent"] / 100) if total else 0
-        pyq_percent = (data["pyq_percent"] / 100) if total else 0
-        rev1_percent = (data["revision_1_percent"] / 100) if total else 0
-        rev2_percent = (data["revision_2_percent"] / 100) if total else 0
+        score = data["final_score"]
 
-        score = (
-            theory_percent * 0.4
-            + pyq_percent * 0.3
-            + rev1_percent * 0.2
-            + rev2_percent * 0.1
-        ) * 200
-
-        category = "Need improvement"
-        if score > 160:
-            category = "JRF likely"
-        elif score >= 130:
-            category = "NET likely"
+        category = "Needs major improvement"
+        if score >= 160:
+            category = "Strong JRF potential"
+        elif score >= 140:
+            category = "NET very likely"
+        elif score >= 120:
+            category = "NET possible"
 
         return render_template(
             "score_predictor.html",
-            predicted_score=round(score, 2),
+            predicted_score=score,
             category=category,
+            subject_breakdown=data["subject_breakdown"],
             active_route="score-predictor",
         )
 
@@ -875,7 +969,7 @@ def create_app() -> Flask:
             {
                 "tasks": tasks,
                 "settings": setting_model.to_dict(),
-                "syllabus": SYLLABUS,
+                "syllabus": {k: v["topics"] for k, v in SYLLABUS.items()},
                 "user": user.to_dict(),
                 "study_streak": calculate_study_streak(task_models),
                 "total_tracked_minutes": total_tracked_minutes,

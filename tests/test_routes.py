@@ -427,3 +427,40 @@ def test_syllabus_progress_endpoint_and_score_page(auth_client):
     score_page = auth_client.get("/score-predictor")
     assert score_page.status_code == 200
     assert "Predicted Score" in score_page.get_data(as_text=True)
+
+
+def test_score_predictor_uses_weighted_baseline(auth_client, app):
+    response = auth_client.get("/score-predictor")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Final Predicted Score / 200" in body
+    assert ">20<" in body
+    assert "Needs major improvement" in body
+
+
+def test_score_predictor_reaches_jrf_category_with_full_progress(auth_client, app):
+    from app import SyllabusTopic, User, UserSyllabusProgress
+
+    with app.app_context():
+        user = User.query.filter_by(username="alice").first()
+        assert user is not None
+        for topic in SyllabusTopic.query.all():
+            db.session.add(
+                UserSyllabusProgress(
+                    user_id=user.id,
+                    topic_id=topic.id,
+                    theory_completed=True,
+                    pyq_30_done=True,
+                    revision_1_done=True,
+                    revision_2_done=True,
+                )
+            )
+        db.session.commit()
+
+    response = auth_client.get("/score-predictor")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "200.0" in body or "200" in body
+    assert "Strong JRF potential" in body
