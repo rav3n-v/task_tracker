@@ -30,15 +30,12 @@ def _admin_login(client, username="admin", password="admin123"):
     )
 
 
-def test_index_route_renders_template(client, monkeypatch):
-    render_stub = Mock(return_value="rendered-index")
-    monkeypatch.setattr(tracker_app, "render_template", render_stub)
-
+def test_root_redirects_to_login_when_unauthenticated(client):
     response = client.get("/")
 
-    assert response.status_code == 200
-    assert response.get_data(as_text=True) == "rendered-index"
-    render_stub.assert_called_once_with("index.html", syllabus=tracker_app.SYLLABUS)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/login")
+
 
 
 def test_register_hashes_password(client, app):
@@ -56,6 +53,26 @@ def test_register_hashes_password(client, app):
 
     me = client.get("/api/me")
     assert me.get_json()["user"] is None
+
+
+def test_dashboard_requires_login_redirect(client):
+    response = client.get("/dashboard")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/login")
+
+
+def test_login_form_redirects_to_dashboard_on_success(client):
+    _admin_login(client)
+    client.post("/api/register", json={"username": "alice", "password": "secret"})
+    client.post("/api/admin/logout")
+
+    response = client.post(
+        "/login", data={"username": "alice", "password": "secret"}, follow_redirects=False
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/dashboard")
 
 
 def test_login_logout_flow(client):

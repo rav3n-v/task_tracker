@@ -6,7 +6,17 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
 
-from flask import Flask, Response, jsonify, render_template, request, session
+from flask import (
+    Flask,
+    Response,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -51,9 +61,7 @@ class Task(db.Model):
     """Database model representing one study task."""
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
-    )
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     title = db.Column(db.String(160), nullable=False)
     unit = db.Column(db.String(120), nullable=False)
     topic = db.Column(db.String(180), nullable=False)
@@ -85,9 +93,7 @@ class Setting(db.Model):
     """Database model for user-specific app settings."""
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True
-    )
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True)
     exam_date = db.Column(db.Date, nullable=True)
     daily_goal = db.Column(db.Integer, default=DEFAULT_DAILY_GOAL)
     theme = db.Column(db.String(20), default=DEFAULT_THEME)
@@ -167,8 +173,6 @@ SYLLABUS: dict[str, list[str]] = {
 
 
 def parse_optional_date(date_value: str | None) -> date | None:
-    """Parse an ISO date string (YYYY-MM-DD) when present."""
-
     if date_value is None:
         return None
     normalized = str(date_value).strip()
@@ -178,8 +182,6 @@ def parse_optional_date(date_value: str | None) -> date | None:
 
 
 def require_string_field(payload: dict[str, Any], field: str) -> str | None:
-    """Return a normalized string field or None when missing/blank."""
-
     value = payload.get(field)
     if value is None:
         return None
@@ -188,22 +190,13 @@ def require_string_field(payload: dict[str, Any], field: str) -> str | None:
 
 
 def parse_json_payload() -> tuple[dict[str, Any] | None, tuple[Response, int] | None]:
-    """Parse JSON request body and return either payload or a JSON error response."""
-
     payload = request.get_json(silent=True)
     if payload is None or not isinstance(payload, dict):
-        return None, (
-            jsonify({"error": "Request body must be a valid JSON object"}),
-            400,
-        )
+        return None, (jsonify({"error": "Request body must be a valid JSON object"}), 400)
     return payload, None
 
 
-def validate_task_payload(
-    payload: dict[str, Any], *, partial: bool = False
-) -> dict[str, str]:
-    """Validate task creation/update payload and return field-level error messages."""
-
+def validate_task_payload(payload: dict[str, Any], *, partial: bool = False) -> dict[str, str]:
     errors: dict[str, str] = {}
     required_fields = ["title", "unit", "topic"]
     if not partial:
@@ -233,8 +226,6 @@ def validate_task_payload(
 
 
 def validate_settings_payload(payload: dict[str, Any]) -> dict[str, str]:
-    """Validate settings update payload and return field-level error messages."""
-
     errors: dict[str, str] = {}
 
     if "daily_goal" in payload:
@@ -265,9 +256,7 @@ def get_current_user() -> User | None:
     return db.session.get(User, user_id)
 
 
-def require_login(
-    view: Callable[..., Response | tuple[Response, int] | str],
-) -> Callable[..., Response | tuple[Response, int] | str]:
+def require_login(view: Callable[..., Response | tuple[Response, int] | str]) -> Callable[..., Response | tuple[Response, int] | str]:
     @wraps(view)
     def wrapped(*args: Any, **kwargs: Any) -> Response | tuple[Response, int] | str:
         if get_current_user() is None:
@@ -277,9 +266,29 @@ def require_login(
     return wrapped
 
 
-def get_or_create_settings(user: User) -> Setting:
-    """Fetch the user's settings row, creating it when absent."""
+def login_required_page(view: Callable[..., Response | str]) -> Callable[..., Response | str]:
+    @wraps(view)
+    def wrapped(*args: Any, **kwargs: Any) -> Response | str:
+        if get_current_user() is None:
+            flash("Please login to continue.", "error")
+            return redirect(url_for("render_login"))
+        return view(*args, **kwargs)
 
+    return wrapped
+
+
+def admin_required_page(view: Callable[..., Response | str]) -> Callable[..., Response | str]:
+    @wraps(view)
+    def wrapped(*args: Any, **kwargs: Any) -> Response | str:
+        if not session.get("is_admin"):
+            flash("Admin login required.", "error")
+            return redirect(url_for("render_admin"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def get_or_create_settings(user: User) -> Setting:
     setting = Setting.query.filter_by(user_id=user.id).first()
     if setting is None:
         setting = Setting(user_id=user.id)
@@ -289,8 +298,6 @@ def get_or_create_settings(user: User) -> Setting:
 
 
 def build_task_from_payload(payload: dict[str, Any], user: User) -> Task:
-    """Create a Task model from API payload values."""
-
     return Task(
         user_id=user.id,
         title=str(payload["title"]).strip(),
@@ -303,8 +310,6 @@ def build_task_from_payload(payload: dict[str, Any], user: User) -> Task:
 
 
 def update_task_from_payload(task: Task, payload: dict[str, Any]) -> None:
-    """Apply mutable task fields from API payload."""
-
     if "title" in payload:
         task.title = str(payload["title"]).strip()
     if "unit" in payload:
@@ -323,8 +328,6 @@ def update_task_from_payload(task: Task, payload: dict[str, Any]) -> None:
 
 
 def update_settings_from_payload(setting: Setting, payload: dict[str, Any]) -> None:
-    """Apply mutable settings fields from API payload."""
-
     if "daily_goal" in payload:
         setting.daily_goal = int(payload["daily_goal"])
     if "theme" in payload:
@@ -334,11 +337,7 @@ def update_settings_from_payload(setting: Setting, payload: dict[str, Any]) -> N
 
 
 def calculate_unit_breakdown(tasks: list[Task]) -> dict[str, dict[str, int]]:
-    """Aggregate task totals and completions per unit."""
-
-    unit_breakdown: dict[str, dict[str, int]] = {
-        unit: {"total": 0, "completed": 0} for unit in SYLLABUS
-    }
+    unit_breakdown: dict[str, dict[str, int]] = {unit: {"total": 0, "completed": 0} for unit in SYLLABUS}
     for task in tasks:
         unit_breakdown.setdefault(task.unit, {"total": 0, "completed": 0})
         unit_breakdown[task.unit]["total"] += 1
@@ -348,8 +347,6 @@ def calculate_unit_breakdown(tasks: list[Task]) -> dict[str, dict[str, int]]:
 
 
 def create_app() -> Flask:
-    """Application factory that wires config, models, and routes."""
-
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -360,16 +357,94 @@ def create_app() -> Flask:
     migrate.init_app(app, db)
 
     @app.get("/")
-    def render_index() -> str:
-        """Render the main application shell."""
+    def root_redirect() -> Response:
+        if get_current_user() is not None:
+            return redirect(url_for("render_dashboard"))
+        return redirect(url_for("render_login"))
 
-        return render_template("index.html", syllabus=SYLLABUS)
+    @app.get("/login")
+    def render_login() -> str | Response:
+        if get_current_user() is not None:
+            return redirect(url_for("render_dashboard"))
+        return render_template("login.html")
+
+    @app.post("/login")
+    def login_page_submit() -> Response:
+        username = str(request.form.get("username", "")).strip()
+        password = str(request.form.get("password", ""))
+        if not username or not password:
+            flash("Username and password are required.", "error")
+            return redirect(url_for("render_login"))
+
+        user = User.query.filter_by(username=username).first()
+        if user is None or not user.check_password(password):
+            flash("Invalid username or password.", "error")
+            return redirect(url_for("render_login"))
+
+        session["user_id"] = user.id
+        flash("Welcome back!", "success")
+        return redirect(url_for("render_dashboard"))
+
+    @app.get("/dashboard")
+    @login_required_page
+    def render_dashboard() -> str:
+        return render_template("dashboard.html", syllabus=SYLLABUS)
 
     @app.get("/admin")
     def render_admin() -> str:
-        """Render admin panel used for managed account creation."""
-
         return render_template("admin.html")
+
+    @app.post("/admin")
+    def admin_login_page_submit() -> Response:
+        username = str(request.form.get("username", "")).strip()
+        password = str(request.form.get("password", ""))
+
+        if not username or not password:
+            flash("Admin username and password are required.", "error")
+            return redirect(url_for("render_admin"))
+
+        valid_admin = username == app.config["ADMIN_USERNAME"] and password == app.config["ADMIN_PASSWORD"]
+        if not valid_admin:
+            flash("Invalid admin credentials.", "error")
+            return redirect(url_for("render_admin"))
+
+        session["is_admin"] = True
+        flash("Admin authenticated.", "success")
+        return redirect(url_for("render_admin_create_user"))
+
+    @app.get("/admin/create-user")
+    @admin_required_page
+    def render_admin_create_user() -> str:
+        return render_template("admin_create_user.html")
+
+    @app.post("/admin/create-user")
+    @admin_required_page
+    def admin_create_user_submit() -> Response:
+        username = str(request.form.get("username", "")).strip()
+        password = str(request.form.get("password", ""))
+
+        if not username or not password:
+            flash("Username and password are required.", "error")
+            return redirect(url_for("render_admin_create_user"))
+
+        if User.query.filter_by(username=username).first() is not None:
+            flash("Username already exists.", "error")
+            return redirect(url_for("render_admin_create_user"))
+
+        user = User(username=username)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        get_or_create_settings(user)
+        flash(f"Account {username} created.", "success")
+        return redirect(url_for("render_admin_create_user"))
+
+    @app.get("/logout")
+    def logout_page() -> Response:
+        session.pop("user_id", None)
+        session.pop("is_admin", None)
+        flash("You have been logged out.", "success")
+        return redirect(url_for("render_login"))
 
     @app.get("/api/admin/session")
     def get_admin_session() -> Response:
@@ -387,10 +462,7 @@ def create_app() -> Flask:
         if username is None or password is None or str(password) == "":
             return jsonify({"error": "Username and password are required"}), 400
 
-        valid_admin = (
-            username == app.config["ADMIN_USERNAME"]
-            and str(password) == app.config["ADMIN_PASSWORD"]
-        )
+        valid_admin = username == app.config["ADMIN_USERNAME"] and str(password) == app.config["ADMIN_PASSWORD"]
         if not valid_admin:
             return jsonify({"error": "Invalid admin credentials"}), 401
 
@@ -426,7 +498,7 @@ def create_app() -> Flask:
             return jsonify({"error": "Username already exists"}), 409
 
         user = User(username=username)
-        user.set_password(password)
+        user.set_password(str(password))
         db.session.add(user)
         db.session.commit()
         get_or_create_settings(user)
@@ -459,41 +531,24 @@ def create_app() -> Flask:
     @app.get("/api/bootstrap")
     @require_login
     def get_bootstrap_data() -> Response:
-        """Return tasks, settings, and syllabus for initial client load."""
-
         user = get_current_user()
         assert user is not None
-        task_models = (
-            Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
-        )
+        task_models = Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
         tasks = [task.to_dict() for task in task_models]
         setting = get_or_create_settings(user).to_dict()
-        return jsonify(
-            {
-                "tasks": tasks,
-                "settings": setting,
-                "syllabus": SYLLABUS,
-                "user": user.to_dict(),
-            }
-        )
+        return jsonify({"tasks": tasks, "settings": setting, "syllabus": SYLLABUS, "user": user.to_dict()})
 
     @app.get("/api/tasks")
     @require_login
     def list_tasks() -> Response:
-        """List all tasks for the logged-in user in reverse creation order."""
-
         user = get_current_user()
         assert user is not None
-        tasks = (
-            Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
-        )
+        tasks = Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
         return jsonify({"tasks": [task.to_dict() for task in tasks]}), 200
 
     @app.post("/api/tasks")
     @require_login
     def create_task() -> tuple[Response, int]:
-        """Create a task from JSON payload and persist it."""
-
         user = get_current_user()
         assert user is not None
         payload, error = parse_json_payload()
@@ -511,8 +566,6 @@ def create_app() -> Flask:
     @app.patch("/api/tasks/<int:task_id>")
     @require_login
     def update_task(task_id: int) -> Response:
-        """Update mutable task fields for a specific task."""
-
         user = get_current_user()
         assert user is not None
         task = Task.query.filter_by(id=task_id, user_id=user.id).first()
@@ -532,8 +585,6 @@ def create_app() -> Flask:
     @app.delete("/api/tasks/<int:task_id>")
     @require_login
     def delete_task(task_id: int) -> Response:
-        """Delete a task by id."""
-
         user = get_current_user()
         assert user is not None
         task = Task.query.filter_by(id=task_id, user_id=user.id).first()
@@ -546,8 +597,6 @@ def create_app() -> Flask:
     @app.put("/api/settings")
     @require_login
     def update_settings() -> Response:
-        """Update user settings and return persisted state."""
-
         user = get_current_user()
         assert user is not None
         setting = get_or_create_settings(user)
@@ -565,8 +614,6 @@ def create_app() -> Flask:
     @app.get("/api/progress")
     @require_login
     def get_progress() -> Response:
-        """Return aggregate progress metrics and exam countdown."""
-
         user = get_current_user()
         assert user is not None
         tasks = Task.query.filter_by(user_id=user.id).all()
