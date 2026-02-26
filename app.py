@@ -19,6 +19,7 @@ from flask import (
 )
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -373,15 +374,16 @@ def create_app() -> Flask:
     db.init_app(app)
     migrate.init_app(app, db)
 
-    schema_initialized = False
+    schema_checked = False
 
     @app.before_request
     def ensure_schema_initialized() -> None:
-        nonlocal schema_initialized
-        if schema_initialized:
+        nonlocal schema_checked
+        if schema_checked:
             return
-        db.create_all()
-        schema_initialized = True
+        if not inspect(db.engine).has_table("user"):
+            db.create_all()
+        schema_checked = True
 
     @app.get("/")
     def root_redirect() -> Response:
