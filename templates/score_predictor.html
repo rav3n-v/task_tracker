@@ -1,15 +1,63 @@
 {% extends 'base.html' %}
 
-{% block content %}
-<div class="container py-5">
-  <h1>Score Predictor</h1>
-  <p><a href="{{ url_for('render_syllabus') }}">Back to Syllabus</a></p>
+{% block title %}Score Predictor - CSIR NET Tracker{% endblock %}
 
-  <div class="card">
-    <div class="card-body">
-      <h2>Predicted Score: {{ predicted_score }} / 200</h2>
-      <p>Category: <strong>{{ category }}</strong></p>
+{% block content %}
+<a class="skip-link" href="#mainContent">Skip to main content</a>
+<div class="layout">
+  <aside class="sidebar" aria-label="Primary">
+    <div class="brand">⚛️ <span>CSIR NET Tracker</span></div>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="{{ url_for('render_dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('render_syllabus') }}">Syllabus</a>
+      <a href="{{ url_for('render_score_predictor') }}" class="active">Score Predictor</a>
+    </nav>
+    <div class="sidebar-footer">
+      <small>Prediction baseline included</small>
+      <p>20 marks</p>
     </div>
-  </div>
+  </aside>
+
+  <main id="mainContent" class="content score-predictor-view">
+    <h1>Weighted Score Predictor</h1>
+    <p class="subtitle">Subject-wise CSIR NET Mathematics projection with aptitude baseline.</p>
+
+    <div class="cards-grid score-summary-grid">
+      <article class="metric-card">
+        <h3>{{ predicted_score }}</h3>
+        <p>Final Predicted Score / 200</p>
+      </article>
+      <article class="metric-card">
+        <h3>20</h3>
+        <p>Baseline Aptitude Score</p>
+      </article>
+      <article class="metric-card">
+        <h3>{{ category }}</h3>
+        <p>Probability Category</p>
+      </article>
+    </div>
+
+    <div class="cards-grid subject-breakdown-grid">
+      {% for subject in subject_breakdown %}
+      <article class="panel subject-card">
+        <h2>{{ subject.subject_name }}</h2>
+        <p class="subtitle">{{ subject.unit_name }} · Weight: {{ subject.weight }}</p>
+        <p><strong>Contribution:</strong> {{ subject.contribution }} marks</p>
+        <p class="task-meta">Progress score: {{ subject.progress_score }}%</p>
+
+        <div class="metric-bar" role="progressbar" aria-label="{{ subject.subject_name }} progress" aria-valuenow="{{ subject.progress_score }}" aria-valuemin="0" aria-valuemax="100">
+          <span style="width: {{ subject.progress_score }}%;"></span>
+        </div>
+
+        <div class="subject-substats">
+          <small>Theory: {{ subject.theory_percent }}%</small>
+          <small>PYQ: {{ subject.pyq_percent }}%</small>
+          <small>Rev 1: {{ subject.revision_1_percent }}%</small>
+          <small>Rev 2: {{ subject.revision_2_percent }}%</small>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </main>
 </div>
 {% endblock %}

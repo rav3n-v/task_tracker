@@ -365,3 +365,23 @@ select:focus-visible {
   border-bottom: 1px solid var(--line);
   font-size: 1.2rem;
 }
+
+.score-predictor-view .score-summary-grid {
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+}
+
+.subject-breakdown-grid {
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+}
+
+.subject-card {
+  display: grid;
+  gap: .7rem;
+}
+
+.subject-substats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: .35rem .75rem;
+  color: var(--muted);
+}
