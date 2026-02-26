@@ -352,6 +352,11 @@ select:focus-visible {
   gap: 1rem;
 }
 
+
+.auth-grid.single {
+  grid-template-columns: minmax(260px, 520px);
+  justify-content: center;
+}
 .auth-userbar {
   display: flex;
   justify-content: space-between;

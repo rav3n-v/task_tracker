@@ -34,5 +34,8 @@ def client(app):
 
 @pytest.fixture()
 def auth_client(client):
+    client.post("/api/admin/login", json={"username": "admin", "password": "admin123"})
     client.post("/api/register", json={"username": "alice", "password": "password123"})
+    client.post("/api/admin/logout")
+    client.post("/api/login", json={"username": "alice", "password": "password123"})
     return client
