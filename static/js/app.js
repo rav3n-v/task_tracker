@@ -26,12 +26,9 @@ const resourceLinks = [
 ];
 
 const el = {
-  authGate: document.getElementById('authGate'),
   appLayout: document.getElementById('appLayout'),
   userDisplay: document.getElementById('userDisplay'),
   logoutBtn: document.getElementById('logoutBtn'),
-  authMessage: document.getElementById('authMessage'),
-  loginForm: document.getElementById('loginForm'),
   navLinks: document.querySelectorAll('.nav-links a'),
   views: {
     dashboard: document.getElementById('dashboardView'),
@@ -88,6 +85,10 @@ async function request(url, options = {}) {
     ...options,
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Authentication required');
+  }
   if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
   return data;
 }
@@ -109,8 +110,7 @@ function setRoute(route) {
 
 function renderAuthState() {
   const loggedIn = Boolean(state.user);
-  el.authGate.hidden = loggedIn;
-  el.appLayout.hidden = !loggedIn;
+  if (el.appLayout) el.appLayout.hidden = !loggedIn;
   el.userDisplay.textContent = loggedIn ? `@${state.user.username}` : '';
 }
 
@@ -256,19 +256,9 @@ async function reloadData() {
 }
 
 function wireForms() {
-  el.loginForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const form = new FormData(el.loginForm);
-    try {
-      await request('/api/login', { method: 'POST', body: JSON.stringify({ username: form.get('username'), password: form.get('password') }) });
-      el.authMessage.textContent = '';
-      await reloadData();
-    } catch (error) { el.authMessage.textContent = error.message; }
-  });
   el.logoutBtn.addEventListener('click', async () => {
     await request('/api/logout', { method: 'POST' });
-    state.user = null;
-    renderAuthState();
+    window.location.href = '/logout';
   });
 
   el.taskUnit.addEventListener('change', updateTopicOptions);
@@ -318,10 +308,7 @@ async function bootstrap() {
   state.timerSeconds = Number(localStorage.getItem('studyTimerSeconds') || 0);
   el.timerDisplay.textContent = formatDuration(state.timerSeconds);
 
-  const me = await request('/api/me');
-  state.user = me.user;
-  renderAuthState();
-  if (state.user) await reloadData();
+  await reloadData();
 
   window.addEventListener('hashchange', () => setRoute(window.location.hash.replace('#', '') || 'dashboard'));
   el.navLinks.forEach((link) => link.addEventListener('click', () => setRoute(link.dataset.route)));
