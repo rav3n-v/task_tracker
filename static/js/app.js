@@ -310,9 +310,8 @@ async function bootstrap() {
 
   await reloadData();
 
-  window.addEventListener('hashchange', () => setRoute(window.location.hash.replace('#', '') || 'dashboard'));
-  el.navLinks.forEach((link) => link.addEventListener('click', () => setRoute(link.dataset.route)));
-  setRoute(window.location.hash.replace('#', '') || 'dashboard');
+  const initialRoute = document.body?.dataset.initialRoute || 'dashboard';
+  setRoute(initialRoute);
   setInterval(renderCountdown, 60 * 1000);
 }
 

@@ -417,7 +417,52 @@ def create_app() -> Flask:
     @app.get("/dashboard")
     @login_required_page
     def render_dashboard() -> str:
-        return render_template("dashboard.html", syllabus=SYLLABUS)
+        return render_dashboard_page("dashboard")
+
+    def render_dashboard_page(active_route: str) -> str:
+        return render_template(
+            "dashboard.html", syllabus=SYLLABUS, active_route=active_route
+        )
+
+    @app.get("/plan")
+    @login_required_page
+    def render_plan() -> str:
+        return render_dashboard_page("plan")
+
+    @app.get("/routine")
+    @login_required_page
+    def render_routine() -> str:
+        return render_dashboard_page("routine")
+
+    @app.get("/session")
+    @login_required_page
+    def render_session() -> str:
+        return render_dashboard_page("session")
+
+    @app.get("/tests")
+    @login_required_page
+    def render_tests() -> str:
+        return render_dashboard_page("tests")
+
+    @app.get("/downloads")
+    @login_required_page
+    def render_downloads() -> str:
+        return render_dashboard_page("downloads")
+
+    @app.get("/analytics")
+    @login_required_page
+    def render_analytics() -> str:
+        return render_dashboard_page("analytics")
+
+    @app.get("/resources")
+    @login_required_page
+    def render_resources() -> str:
+        return render_dashboard_page("resources")
+
+    @app.get("/settings")
+    @login_required_page
+    def render_settings() -> str:
+        return render_dashboard_page("settings")
 
     @app.get("/admin")
     def render_admin() -> str:
