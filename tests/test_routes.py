@@ -3,13 +3,11 @@ from __future__ import annotations
 from datetime import date, timedelta
 from unittest.mock import Mock
 
-import pytest
-
 import app as tracker_app
 from app import Task, User, db, get_or_create_settings
 
 
-def _create_user(username='user', password='pass123'):
+def _create_user(username="user", password="pass123"):
     user = User(username=username)
     user.set_password(password)
     db.session.add(user)
@@ -17,7 +15,9 @@ def _create_user(username='user', password='pass123'):
     return user
 
 
-def _create_task(user_id, *, title='Read chapter', unit='Algebra', topic='Groups', **overrides):
+def _create_task(
+    user_id, *, title="Read chapter", unit="Algebra", topic="Groups", **overrides
+):
     task = Task(user_id=user_id, title=title, unit=unit, topic=topic, **overrides)
     db.session.add(task)
     db.session.commit()
@@ -25,180 +25,223 @@ def _create_task(user_id, *, title='Read chapter', unit='Algebra', topic='Groups
 
 
 def test_index_route_renders_template(client, monkeypatch):
-    render_stub = Mock(return_value='rendered-index')
-    monkeypatch.setattr(tracker_app, 'render_template', render_stub)
+    render_stub = Mock(return_value="rendered-index")
+    monkeypatch.setattr(tracker_app, "render_template", render_stub)
 
-    response = client.get('/')
+    response = client.get("/")
 
     assert response.status_code == 200
-    assert response.get_data(as_text=True) == 'rendered-index'
-    render_stub.assert_called_once_with('index.html', syllabus=tracker_app.SYLLABUS)
+    assert response.get_data(as_text=True) == "rendered-index"
+    render_stub.assert_called_once_with("index.html", syllabus=tracker_app.SYLLABUS)
 
 
 def test_register_hashes_password_and_starts_session(client, app):
-    response = client.post('/api/register', json={'username': 'alice', 'password': 'secret'})
+    response = client.post(
+        "/api/register", json={"username": "alice", "password": "secret"}
+    )
 
     assert response.status_code == 201
     with app.app_context():
-        user = User.query.filter_by(username='alice').first()
+        user = User.query.filter_by(username="alice").first()
         assert user is not None
-        assert user.password_hash != 'secret'
-        assert user.check_password('secret') is True
+        assert user.password_hash != "secret"
+        assert user.check_password("secret") is True
 
-    me = client.get('/api/me')
-    assert me.get_json()['user']['username'] == 'alice'
+    me = client.get("/api/me")
+    assert me.get_json()["user"]["username"] == "alice"
 
 
 def test_login_logout_flow(client):
-    client.post('/api/register', json={'username': 'alice', 'password': 'secret'})
-    client.post('/api/logout')
+    client.post("/api/register", json={"username": "alice", "password": "secret"})
+    client.post("/api/logout")
 
-    bad = client.post('/api/login', json={'username': 'alice', 'password': 'wrong'})
+    bad = client.post("/api/login", json={"username": "alice", "password": "wrong"})
     assert bad.status_code == 401
 
-    good = client.post('/api/login', json={'username': 'alice', 'password': 'secret'})
+    good = client.post("/api/login", json={"username": "alice", "password": "secret"})
     assert good.status_code == 200
 
-    logout = client.post('/api/logout')
+    logout = client.post("/api/logout")
     assert logout.status_code == 200
-    assert client.get('/api/me').get_json()['user'] is None
+    assert client.get("/api/me").get_json()["user"] is None
 
 
 def test_protected_routes_require_auth(client):
-    for path, method in [('/api/bootstrap', client.get), ('/api/progress', client.get), ('/api/settings', lambda p: client.put(p, json={})), ('/api/tasks', client.get)]:
+    for path, method in [
+        ("/api/bootstrap", client.get),
+        ("/api/progress", client.get),
+        ("/api/settings", lambda p: client.put(p, json={})),
+        ("/api/tasks", client.get),
+    ]:
         response = method(path)
         assert response.status_code == 401
 
 
 def test_bootstrap_returns_only_current_user_tasks(auth_client, app):
     with app.app_context():
-        alice = User.query.filter_by(username='alice').first()
-        bob = _create_user('bob', 'secret2')
-        _create_task(alice.id, title='Alice task')
-        _create_task(bob.id, title='Bob task')
+        alice = User.query.filter_by(username="alice").first()
+        bob = _create_user("bob", "secret2")
+        _create_task(alice.id, title="Alice task")
+        _create_task(bob.id, title="Bob task")
 
-    response = auth_client.get('/api/bootstrap')
+    response = auth_client.get("/api/bootstrap")
     assert response.status_code == 200
-    tasks = response.get_json()['tasks']
+    tasks = response.get_json()["tasks"]
     assert len(tasks) == 1
-    assert tasks[0]['title'] == 'Alice task'
+    assert tasks[0]["title"] == "Alice task"
 
 
 def test_get_tasks_returns_only_current_user_tasks(auth_client, app):
     with app.app_context():
-        alice = User.query.filter_by(username='alice').first()
-        bob = _create_user('bob', 'secret2')
-        _create_task(alice.id, title='Alice task')
-        _create_task(bob.id, title='Bob task')
+        alice = User.query.filter_by(username="alice").first()
+        bob = _create_user("bob", "secret2")
+        _create_task(alice.id, title="Alice task")
+        _create_task(bob.id, title="Bob task")
 
-    response = auth_client.get('/api/tasks')
+    response = auth_client.get("/api/tasks")
     assert response.status_code == 200
     payload = response.get_json()
-    assert 'tasks' in payload
-    assert len(payload['tasks']) == 1
-    assert payload['tasks'][0]['title'] == 'Alice task'
+    assert "tasks" in payload
+    assert len(payload["tasks"]) == 1
+    assert payload["tasks"][0]["title"] == "Alice task"
 
 
 def test_create_task_happy_path_with_optional_fields(auth_client, app):
-    response = auth_client.post('/api/tasks', json={'title': '  Work examples  ', 'unit': 'Linear Algebra', 'topic': 'Eigenvalues', 'priority': 'High', 'due_date': '2030-05-01', 'notes': '  Review solved problems.  '})
+    response = auth_client.post(
+        "/api/tasks",
+        json={
+            "title": "  Work examples  ",
+            "unit": "Linear Algebra",
+            "topic": "Eigenvalues",
+            "priority": "High",
+            "due_date": "2030-05-01",
+            "notes": "  Review solved problems.  ",
+        },
+    )
 
     assert response.status_code == 201
     payload = response.get_json()
-    assert payload['title'] == 'Work examples'
+    assert payload["title"] == "Work examples"
 
     with app.app_context():
-        task = db.session.get(Task, payload['id'])
+        task = db.session.get(Task, payload["id"])
         assert task is not None
-        assert task.topic == 'Eigenvalues'
+        assert task.topic == "Eigenvalues"
 
 
 def test_create_task_validation_errors(auth_client):
-    response = auth_client.post('/api/tasks', json={'title': '   ', 'unit': '', 'topic': 'Topic', 'priority': 'Urgent', 'due_date': '2030/01/01'})
+    response = auth_client.post(
+        "/api/tasks",
+        json={
+            "title": "   ",
+            "unit": "",
+            "topic": "Topic",
+            "priority": "Urgent",
+            "due_date": "2030/01/01",
+        },
+    )
 
     assert response.status_code == 400
     payload = response.get_json()
-    assert payload['error'] == 'Validation failed'
-    assert payload['details']['title'] == 'title cannot be blank'
-    assert payload['details']['unit'] == 'unit cannot be blank'
-    assert 'priority' in payload['details']
-    assert 'due_date' in payload['details']
+    assert payload["error"] == "Validation failed"
+    assert payload["details"]["title"] == "title cannot be blank"
+    assert payload["details"]["unit"] == "unit cannot be blank"
+    assert "priority" in payload["details"]
+    assert "due_date" in payload["details"]
 
 
 def test_update_task_accepts_additional_fields(auth_client, app):
     with app.app_context():
-        alice = User.query.filter_by(username='alice').first()
+        alice = User.query.filter_by(username="alice").first()
         task_id = _create_task(alice.id).id
 
-    response = auth_client.patch(f'/api/tasks/{task_id}', json={'title': 'Updated title', 'unit': 'Numerical Analysis', 'topic': 'Errors', 'completed': True, 'due_date': '2035-01-10', 'notes': 'updated'})
+    response = auth_client.patch(
+        f"/api/tasks/{task_id}",
+        json={
+            "title": "Updated title",
+            "unit": "Numerical Analysis",
+            "topic": "Errors",
+            "completed": True,
+            "due_date": "2035-01-10",
+            "notes": "updated",
+        },
+    )
     assert response.status_code == 200
     data = response.get_json()
-    assert data['title'] == 'Updated title'
-    assert data['completed'] is True
+    assert data["title"] == "Updated title"
+    assert data["completed"] is True
 
 
 def test_patch_task_validation_errors(auth_client, app):
     with app.app_context():
-        alice = User.query.filter_by(username='alice').first()
+        alice = User.query.filter_by(username="alice").first()
         task_id = _create_task(alice.id).id
 
-    response = auth_client.patch(f'/api/tasks/{task_id}', json={'completed': 'yes', 'due_date': 'invalid'})
+    response = auth_client.patch(
+        f"/api/tasks/{task_id}", json={"completed": "yes", "due_date": "invalid"}
+    )
     assert response.status_code == 400
     payload = response.get_json()
-    assert payload['error'] == 'Validation failed'
-    assert payload['details']['completed'] == 'completed must be a boolean'
-    assert 'due_date' in payload['details']
+    assert payload["error"] == "Validation failed"
+    assert payload["details"]["completed"] == "completed must be a boolean"
+    assert "due_date" in payload["details"]
 
 
 def test_update_delete_cannot_access_other_users_task(auth_client, app):
     with app.app_context():
-        bob = _create_user('bob', 'secret2')
+        bob = _create_user("bob", "secret2")
         bob_task_id = _create_task(bob.id).id
 
-    patch_response = auth_client.patch(f'/api/tasks/{bob_task_id}', json={'completed': True})
+    patch_response = auth_client.patch(
+        f"/api/tasks/{bob_task_id}", json={"completed": True}
+    )
     assert patch_response.status_code == 404
-    assert patch_response.get_json()['error'] == 'Task not found'
+    assert patch_response.get_json()["error"] == "Task not found"
 
-    delete_response = auth_client.delete(f'/api/tasks/{bob_task_id}')
+    delete_response = auth_client.delete(f"/api/tasks/{bob_task_id}")
     assert delete_response.status_code == 404
-    assert delete_response.get_json()['error'] == 'Task not found'
+    assert delete_response.get_json()["error"] == "Task not found"
 
 
 def test_update_settings_happy_path(auth_client, app):
-    response = auth_client.put('/api/settings', json={'daily_goal': 7, 'theme': 'light', 'exam_date': '2031-10-12'})
+    response = auth_client.put(
+        "/api/settings",
+        json={"daily_goal": 7, "theme": "light", "exam_date": "2031-10-12"},
+    )
     assert response.status_code == 200
 
     with app.app_context():
-        alice = User.query.filter_by(username='alice').first()
+        alice = User.query.filter_by(username="alice").first()
         setting = get_or_create_settings(alice)
         assert setting.daily_goal == 7
 
 
 def test_progress_returns_user_specific_aggregates(auth_client, app):
     with app.app_context():
-        alice = User.query.filter_by(username='alice').first()
-        bob = _create_user('bob', 'secret2')
-        _create_task(alice.id, unit='Algebra', completed=True)
-        _create_task(alice.id, unit='Algebra', completed=False)
-        _create_task(bob.id, unit='Algebra', completed=True)
+        alice = User.query.filter_by(username="alice").first()
+        bob = _create_user("bob", "secret2")
+        _create_task(alice.id, unit="Algebra", completed=True)
+        _create_task(alice.id, unit="Algebra", completed=False)
+        _create_task(bob.id, unit="Algebra", completed=True)
 
         setting = get_or_create_settings(alice)
         setting.exam_date = date.today() + timedelta(days=10)
         db.session.commit()
 
-    response = auth_client.get('/api/progress')
+    response = auth_client.get("/api/progress")
     data = response.get_json()
-    assert data['total'] == 2
-    assert data['completed'] == 1
-    assert data['days_left'] == 10
+    assert data["total"] == 2
+    assert data["completed"] == 1
+    assert data["days_left"] == 10
 
 
 def test_progress_uses_unit_breakdown_helper(auth_client, monkeypatch):
-    fake_breakdown = {'Custom': {'total': 99, 'completed': 88}}
+    fake_breakdown = {"Custom": {"total": 99, "completed": 88}}
     calc_spy = Mock(return_value=fake_breakdown)
-    monkeypatch.setattr(tracker_app, 'calculate_unit_breakdown', calc_spy)
+    monkeypatch.setattr(tracker_app, "calculate_unit_breakdown", calc_spy)
 
-    response = auth_client.get('/api/progress')
+    response = auth_client.get("/api/progress")
 
     assert response.status_code == 200
-    assert response.get_json()['unit_breakdown'] == fake_breakdown
+    assert response.get_json()["unit_breakdown"] == fake_breakdown
     calc_spy.assert_called_once()

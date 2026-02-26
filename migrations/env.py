@@ -5,11 +5,11 @@ from flask import current_app
 
 config = context.config
 
-target_metadata = current_app.extensions['migrate'].db.metadata
+target_metadata = current_app.extensions["migrate"].db.metadata
 
 
 def get_engine():
-    return current_app.extensions['migrate'].db.engine
+    return current_app.extensions["migrate"].db.engine
 
 
 def run_migrations_offline():

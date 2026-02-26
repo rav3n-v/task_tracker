@@ -32,7 +32,9 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     tasks = db.relationship("Task", back_populates="user", cascade="all, delete-orphan")
-    settings = db.relationship("Setting", back_populates="user", cascade="all, delete-orphan", uselist=False)
+    settings = db.relationship(
+        "Setting", back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
@@ -48,7 +50,9 @@ class Task(db.Model):
     """Database model representing one study task."""
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
     title = db.Column(db.String(160), nullable=False)
     unit = db.Column(db.String(120), nullable=False)
     topic = db.Column(db.String(180), nullable=False)
@@ -80,7 +84,9 @@ class Setting(db.Model):
     """Database model for user-specific app settings."""
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True
+    )
     exam_date = db.Column(db.Date, nullable=True)
     daily_goal = db.Column(db.Integer, default=DEFAULT_DAILY_GOAL)
     theme = db.Column(db.String(20), default=DEFAULT_THEME)
@@ -170,11 +176,16 @@ def parse_json_payload() -> tuple[dict[str, Any] | None, tuple[Response, int] | 
 
     payload = request.get_json(silent=True)
     if payload is None or not isinstance(payload, dict):
-        return None, (jsonify({"error": "Request body must be a valid JSON object"}), 400)
+        return None, (
+            jsonify({"error": "Request body must be a valid JSON object"}),
+            400,
+        )
     return payload, None
 
 
-def validate_task_payload(payload: dict[str, Any], *, partial: bool = False) -> dict[str, str]:
+def validate_task_payload(
+    payload: dict[str, Any], *, partial: bool = False
+) -> dict[str, str]:
     """Validate task creation/update payload and return field-level error messages."""
 
     errors: dict[str, str] = {}
@@ -212,7 +223,9 @@ def get_current_user() -> User | None:
     return db.session.get(User, user_id)
 
 
-def require_login(view: Callable[..., Response | tuple[Response, int] | str]) -> Callable[..., Response | tuple[Response, int] | str]:
+def require_login(
+    view: Callable[..., Response | tuple[Response, int] | str],
+) -> Callable[..., Response | tuple[Response, int] | str]:
     @wraps(view)
     def wrapped(*args: Any, **kwargs: Any) -> Response | tuple[Response, int] | str:
         if get_current_user() is None:
@@ -278,7 +291,9 @@ def update_settings_from_payload(setting: Setting, payload: dict[str, Any]) -> N
 def calculate_unit_breakdown(tasks: list[Task]) -> dict[str, dict[str, int]]:
     """Aggregate task totals and completions per unit."""
 
-    unit_breakdown: dict[str, dict[str, int]] = {unit: {"total": 0, "completed": 0} for unit in SYLLABUS}
+    unit_breakdown: dict[str, dict[str, int]] = {
+        unit: {"total": 0, "completed": 0} for unit in SYLLABUS
+    }
     for task in tasks:
         unit_breakdown.setdefault(task.unit, {"total": 0, "completed": 0})
         unit_breakdown[task.unit]["total"] += 1
@@ -296,7 +311,6 @@ def create_app() -> Flask:
     app.config["SECRET_KEY"] = "dev-secret-key"
     db.init_app(app)
     migrate.init_app(app, db)
-
 
     @app.get("/")
     def render_index() -> str:
@@ -360,10 +374,19 @@ def create_app() -> Flask:
 
         user = get_current_user()
         assert user is not None
-        task_models = Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
+        task_models = (
+            Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
+        )
         tasks = [task.to_dict() for task in task_models]
         setting = get_or_create_settings(user).to_dict()
-        return jsonify({"tasks": tasks, "settings": setting, "syllabus": SYLLABUS, "user": user.to_dict()})
+        return jsonify(
+            {
+                "tasks": tasks,
+                "settings": setting,
+                "syllabus": SYLLABUS,
+                "user": user.to_dict(),
+            }
+        )
 
     @app.get("/api/tasks")
     @require_login
@@ -372,7 +395,9 @@ def create_app() -> Flask:
 
         user = get_current_user()
         assert user is not None
-        tasks = Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
+        tasks = (
+            Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
+        )
         return jsonify({"tasks": [task.to_dict() for task in tasks]}), 200
 
     @app.post("/api/tasks")
