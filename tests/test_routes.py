@@ -24,6 +24,12 @@ def _create_task(
     return task
 
 
+def _admin_login(client, username="admin", password="admin123"):
+    return client.post(
+        "/api/admin/login", json={"username": username, "password": password}
+    )
+
+
 def test_index_route_renders_template(client, monkeypatch):
     render_stub = Mock(return_value="rendered-index")
     monkeypatch.setattr(tracker_app, "render_template", render_stub)
@@ -35,7 +41,8 @@ def test_index_route_renders_template(client, monkeypatch):
     render_stub.assert_called_once_with("index.html", syllabus=tracker_app.SYLLABUS)
 
 
-def test_register_hashes_password_and_starts_session(client, app):
+def test_register_hashes_password(client, app):
+    _admin_login(client)
     response = client.post(
         "/api/register", json={"username": "alice", "password": "secret"}
     )
@@ -48,10 +55,11 @@ def test_register_hashes_password_and_starts_session(client, app):
         assert user.check_password("secret") is True
 
     me = client.get("/api/me")
-    assert me.get_json()["user"]["username"] == "alice"
+    assert me.get_json()["user"] is None
 
 
 def test_login_logout_flow(client):
+    _admin_login(client)
     client.post("/api/register", json={"username": "alice", "password": "secret"})
     client.post("/api/logout")
 
@@ -217,6 +225,7 @@ def test_update_settings_happy_path(auth_client, app):
 
 
 def test_register_requires_username_and_password(client):
+    _admin_login(client)
     missing_username = client.post("/api/register", json={"password": "secret"})
     assert missing_username.status_code == 400
 
@@ -272,3 +281,25 @@ def test_progress_uses_unit_breakdown_helper(auth_client, monkeypatch):
     assert response.status_code == 200
     assert response.get_json()["unit_breakdown"] == fake_breakdown
     calc_spy.assert_called_once()
+
+
+def test_register_requires_admin_auth(client):
+    response = client.post(
+        "/api/register", json={"username": "alice", "password": "secret"}
+    )
+    assert response.status_code == 403
+
+
+def test_admin_session_login_logout_flow(client):
+    assert client.get("/api/admin/session").get_json()["is_admin"] is False
+
+    bad = _admin_login(client, password="wrong")
+    assert bad.status_code == 401
+
+    good = _admin_login(client)
+    assert good.status_code == 200
+    assert client.get("/api/admin/session").get_json()["is_admin"] is True
+
+    logout = client.post("/api/admin/logout")
+    assert logout.status_code == 200
+    assert client.get("/api/admin/session").get_json()["is_admin"] is False

@@ -32,7 +32,6 @@ const el = {
   logoutBtn: document.getElementById('logoutBtn'),
   authMessage: document.getElementById('authMessage'),
   loginForm: document.getElementById('loginForm'),
-  registerForm: document.getElementById('registerForm'),
   navLinks: document.querySelectorAll('.nav-links a'),
   views: {
     dashboard: document.getElementById('dashboardView'),
@@ -266,17 +265,6 @@ function wireForms() {
       await reloadData();
     } catch (error) { el.authMessage.textContent = error.message; }
   });
-
-  el.registerForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const form = new FormData(el.registerForm);
-    try {
-      await request('/api/register', { method: 'POST', body: JSON.stringify({ username: form.get('username'), password: form.get('password') }) });
-      el.authMessage.textContent = '';
-      await reloadData();
-    } catch (error) { el.authMessage.textContent = error.message; }
-  });
-
   el.logoutBtn.addEventListener('click', async () => {
     await request('/api/logout', { method: 'POST' });
     state.user = null;

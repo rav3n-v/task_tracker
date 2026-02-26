@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import date, datetime
 from functools import wraps
 from pathlib import Path
@@ -353,6 +354,8 @@ def create_app() -> Flask:
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SECRET_KEY"] = "dev-secret-key"
+    app.config["ADMIN_USERNAME"] = os.environ.get("ADMIN_USERNAME", "admin")
+    app.config["ADMIN_PASSWORD"] = os.environ.get("ADMIN_PASSWORD", "admin123")
     db.init_app(app)
     migrate.init_app(app, db)
 
@@ -362,6 +365,43 @@ def create_app() -> Flask:
 
         return render_template("index.html", syllabus=SYLLABUS)
 
+    @app.get("/admin")
+    def render_admin() -> str:
+        """Render admin panel used for managed account creation."""
+
+        return render_template("admin.html")
+
+    @app.get("/api/admin/session")
+    def get_admin_session() -> Response:
+        return jsonify({"is_admin": bool(session.get("is_admin"))})
+
+    @app.post("/api/admin/login")
+    def admin_login() -> tuple[Response, int]:
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
+
+        username = require_string_field(payload, "username")
+        password = payload.get("password")
+        if username is None or password is None or str(password) == "":
+            return jsonify({"error": "Username and password are required"}), 400
+
+        valid_admin = (
+            username == app.config["ADMIN_USERNAME"]
+            and str(password) == app.config["ADMIN_PASSWORD"]
+        )
+        if not valid_admin:
+            return jsonify({"error": "Invalid admin credentials"}), 401
+
+        session["is_admin"] = True
+        return jsonify({"is_admin": True}), 200
+
+    @app.post("/api/admin/logout")
+    def admin_logout() -> Response:
+        session.pop("is_admin", None)
+        return jsonify({"ok": True})
+
     @app.get("/api/me")
     def get_me() -> Response:
         user = get_current_user()
@@ -369,6 +409,9 @@ def create_app() -> Flask:
 
     @app.post("/api/register")
     def register() -> tuple[Response, int]:
+        if not session.get("is_admin"):
+            return jsonify({"error": "Admin authentication required"}), 403
+
         payload, error = parse_json_payload()
         if error:
             return error
@@ -387,7 +430,6 @@ def create_app() -> Flask:
         db.session.add(user)
         db.session.commit()
         get_or_create_settings(user)
-        session["user_id"] = user.id
         return jsonify({"user": user.to_dict()}), 201
 
     @app.post("/api/login")

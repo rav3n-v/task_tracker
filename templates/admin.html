@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel - CSIR NET Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+</head>
+<body>
+  <section class="auth-gate">
+    <h1>Admin Panel</h1>
+    <p class="subtitle">Login as admin to create user accounts.</p>
+
+    <div id="adminLoginWrap" class="auth-grid single">
+      <form id="adminLoginForm" class="panel form-grid compact">
+        <h2>Admin Login</h2>
+        <label for="adminUsername">Username</label><input id="adminUsername" name="username" required />
+        <label for="adminPassword">Password</label><input id="adminPassword" name="password" type="password" required />
+        <button type="submit">Login</button>
+      </form>
+    </div>
+
+    <div id="adminCreateWrap" class="auth-grid single" hidden>
+      <form id="adminCreateUserForm" class="panel form-grid compact">
+        <h2>Create Account</h2>
+        <label for="newUsername">Username</label><input id="newUsername" name="username" required />
+        <label for="newPassword">Password</label><input id="newPassword" name="password" type="password" required />
+        <button type="submit">Create account</button>
+      </form>
+      <button id="adminLogoutBtn" type="button">Logout admin</button>
+    </div>
+
+    <p id="adminMessage" class="subtitle"></p>
+  </section>
+
+  <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+</body>
+</html>
