@@ -1,3 +1,6 @@
+const config = window.APP_CONFIG || {};
+const api = config.api || {};
+
 const state = {
   tasks: [],
   settings: {},
@@ -10,13 +13,13 @@ const state = {
 };
 
 const routineTemplate = [
-  { id: 'r1', time: '5:00 AM - 5:30 AM', task: 'Wake up, Exercise, Wash up', tag: 'Physical', minutes: 30 },
-  { id: 'r2', time: '6:00 AM - 7:00 AM', task: 'Practise General / Part A', tag: 'Study', minutes: 60 },
-  { id: 'r3', time: '7:00 AM - 8:30 AM', task: 'Fresh up, Breakfast', tag: 'Nutrition', minutes: 90 },
-  { id: 'r4', time: '8:30 AM - 9:30 AM', task: 'Previous day revision', tag: 'Study', minutes: 60 },
-  { id: 'r5', time: '9:30 AM - 12:30 PM', task: 'Core Study Session 1', tag: 'Study', minutes: 180 },
-  { id: 'r6', time: '12:30 PM - 1:30 PM', task: 'Lunch Break', tag: 'Break', minutes: 60 },
-  { id: 'r7', time: '1:30 PM - 4:30 PM', task: 'Core Study Session 2', tag: 'Study', minutes: 180 },
+  { id: 'r1', time: '5:00 AM - 5:30 AM', task: 'Wake up, Exercise, Wash up', tag: 'Physical' },
+  { id: 'r2', time: '6:00 AM - 7:00 AM', task: 'Practise General / Part A', tag: 'Study' },
+  { id: 'r3', time: '7:00 AM - 8:30 AM', task: 'Fresh up, Breakfast', tag: 'Nutrition' },
+  { id: 'r4', time: '8:30 AM - 9:30 AM', task: 'Previous day revision', tag: 'Study' },
+  { id: 'r5', time: '9:30 AM - 12:30 PM', task: 'Core Study Session 1', tag: 'Study' },
+  { id: 'r6', time: '12:30 PM - 1:30 PM', task: 'Lunch Break', tag: 'Break' },
+  { id: 'r7', time: '1:30 PM - 4:30 PM', task: 'Core Study Session 2', tag: 'Study' },
 ];
 
 const resourceLinks = [
@@ -80,38 +83,25 @@ const el = {
 };
 
 async function request(url, options = {}) {
-  const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  const response = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
-    window.location.href = '/login';
+    window.location.href = config.loginUrl || '/login';
     throw new Error('Authentication required');
   }
-  if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
+  if (!response.ok) {
+    throw new Error(data.error || `Request failed: ${response.status}`);
+  }
   return data;
 }
 
-const todayKey = () => new Date().toISOString().slice(0, 10);
-const readJson = (k, f) => (localStorage.getItem(k) ? JSON.parse(localStorage.getItem(k)) : f);
-const writeJson = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-const getRoutineState = () => readJson('routineState', {});
-const setRoutineState = (next) => writeJson('routineState', next);
-const getDailyLog = () => readJson('dailyStudyLog', {});
-const formatDuration = (s) => `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+const formatDuration = (seconds) => `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
 function setRoute(route) {
   const active = Object.hasOwn(el.views, route) ? route : 'dashboard';
   Object.values(el.views).forEach((view) => view.classList.remove('active'));
   el.views[active].classList.add('active');
   el.navLinks.forEach((link) => link.classList.toggle('active', link.dataset.route === active));
-}
-
-function renderAuthState() {
-  const loggedIn = Boolean(state.user);
-  if (el.appLayout) el.appLayout.hidden = !loggedIn;
-  el.userDisplay.textContent = loggedIn ? `@${state.user.username}` : '';
 }
 
 function populateSyllabus() {
@@ -127,78 +117,43 @@ function updateTopicOptions() {
 
 function renderTasks() {
   const needle = state.search.trim().toLowerCase();
-  const tasks = state.tasks.filter((task) => {
-    if (!needle) return true;
-    return [task.title, task.unit, task.topic].join(' ').toLowerCase().includes(needle);
-  });
-
-  el.taskList.innerHTML = tasks.map((task) => `
-    <article class="task-item">
-      <input class="task-toggle" data-id="${task.id}" type="checkbox" ${task.completed ? 'checked' : ''} />
-      <div><strong>${task.title}</strong><div class="task-meta">${task.unit} · ${task.topic}</div><div class="task-meta">Due: ${task.due_date || 'Not set'}${task.notes ? ` · ${task.notes}` : ''}</div></div>
-      <div class="task-actions"><span class="badge ${task.priority.toLowerCase()}">${task.priority}</span><button class="task-delete" data-id="${task.id}">Delete</button></div>
-    </article>`).join('');
-
-  el.taskList.querySelectorAll('.task-toggle').forEach((checkbox) => checkbox.addEventListener('change', async () => {
-    await request(`/api/tasks/${checkbox.dataset.id}`, { method: 'PATCH', body: JSON.stringify({ completed: checkbox.checked }) });
-    await reloadData();
-  }));
-  el.taskList.querySelectorAll('.task-delete').forEach((button) => button.addEventListener('click', async () => {
-    await request(`/api/tasks/${button.dataset.id}`, { method: 'DELETE' });
-    await reloadData();
-  }));
+  const tasks = state.tasks.filter((task) => !needle || [task.title, task.unit, task.topic].join(' ').toLowerCase().includes(needle));
+  el.taskList.innerHTML = tasks.map((task) => `<article class="task-item"><input class="task-toggle" data-id="${task.id}" type="checkbox" ${task.completed ? 'checked' : ''} /><div><strong>${task.title}</strong><div class="task-meta">${task.unit} · ${task.topic}</div><div class="task-meta">Due: ${task.due_date || 'Not set'}${task.notes ? ` · ${task.notes}` : ''}</div></div><div class="task-actions"><span class="badge ${task.priority.toLowerCase()}">${task.priority}</span><button class="task-delete" data-id="${task.id}">Delete</button></div></article>`).join('');
+  el.taskList.querySelectorAll('.task-toggle').forEach((box) => box.addEventListener('change', async () => { await request(`${api.tasks}/${box.dataset.id}`, { method: 'PATCH', body: JSON.stringify({ completed: box.checked }) }); await reloadData(); }));
+  el.taskList.querySelectorAll('.task-delete').forEach((btn) => btn.addEventListener('click', async () => { await request(`${api.tasks}/${btn.dataset.id}`, { method: 'DELETE' }); await reloadData(); }));
 }
 
 function renderDashboard() {
   if (!state.progress) return;
   const completion = state.progress.completion_rate || 0;
-  const studyMinutes = Math.round((state.progress.completed || 0) * 45);
+  const tracked = state.progress.total_tracked_minutes || 0;
   const cards = [
-    { value: `${state.progress.completed || 0}/60`, label: 'Study Plan Progress', percent: Math.min((state.progress.completed / 60) * 100, 100) },
-    { value: `${Math.floor(studyMinutes / 60)}h`, label: 'Total Study Time', percent: Math.min((studyMinutes / 3600) * 100, 100) },
-    { value: String(state.progress.completed || 0), label: 'Mock Tests Completed', percent: Math.min((state.progress.completed / 20) * 100, 100) },
-    { value: `${completion}%`, label: 'Success Probability', percent: completion },
+    { value: `${state.progress.completed || 0}/${state.progress.total || 0}`, label: 'Completed Tasks', percent: completion },
+    { value: `${tracked}m`, label: 'Total Study Time', percent: Math.min((tracked / 7200) * 100, 100) },
+    { value: `${state.progress.study_streak || 0} days`, label: 'Study Streak', percent: Math.min((state.progress.study_streak || 0) * 10, 100) },
+    { value: `${completion}%`, label: 'Completion Rate', percent: completion },
   ];
   el.dashboardCards.innerHTML = cards.map((card) => `<article class="metric-card"><h3>${card.value}</h3><p>${card.label}</p><div class="metric-bar"><span style="width:${card.percent}%"></span></div></article>`).join('');
-  el.daysComplete.textContent = `${Math.min(state.progress.completed || 0, 60)}/60`;
-  el.trackedMinutes.textContent = `${studyMinutes}m`;
+  el.daysComplete.textContent = `${state.progress.completed || 0}/${state.progress.total || 0}`;
+  el.trackedMinutes.textContent = `${tracked}m`;
 }
 
 function renderHeaderBits() {
   const now = new Date();
   el.currentDate.textContent = `Current Date: ${now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
-  const log = getDailyLog();
-  let streak = 0;
-  for (let i = 0; i < 365; i += 1) {
-    const day = new Date();
-    day.setDate(now.getDate() - i);
-    const key = day.toISOString().slice(0, 10);
-    if ((log[key] || 0) > 0) streak += 1; else break;
-  }
-  el.streakText.textContent = `Study Streak: ${streak} days`;
+  el.streakText.textContent = `Study Streak: ${state.progress?.study_streak || 0} days`;
 }
 
 function renderCountdown() {
-  const target = state.settings.exam_date ? new Date(state.settings.exam_date) : new Date(`${new Date().getFullYear()}-12-15T00:00:00`);
-  const diff = Math.max(0, target.getTime() - Date.now());
-  const minutesTotal = Math.floor(diff / 60000);
-  el.countDays.textContent = String(Math.floor(minutesTotal / (60 * 24))).padStart(2, '0');
-  el.countHours.textContent = String(Math.floor((minutesTotal % (60 * 24)) / 60)).padStart(2, '0');
-  el.countMinutes.textContent = String(minutesTotal % 60).padStart(2, '0');
-  el.targetDate.textContent = `Target Exam: ${target.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}`;
+  const countdown = state.progress?.countdown || { days: 0, hours: 0, minutes: 0 };
+  el.countDays.textContent = String(countdown.days).padStart(2, '0');
+  el.countHours.textContent = String(countdown.hours).padStart(2, '0');
+  el.countMinutes.textContent = String(countdown.minutes).padStart(2, '0');
+  el.targetDate.textContent = `Target Exam: ${state.progress?.target_exam || 'Not set'}`;
 }
 
 function renderRoutine() {
-  const key = todayKey();
-  const checkedToday = getRoutineState()[key] || {};
-  el.routineList.innerHTML = routineTemplate.map((item) => `<article class="routine-item"><input type="checkbox" data-id="${item.id}" ${checkedToday[item.id] ? 'checked' : ''} /><div class="routine-time">${item.time}</div><label>${item.task}</label><div class="routine-tag">${item.tag}</div></article>`).join('');
-  el.routineList.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', () => {
-    const current = getRoutineState();
-    const dayState = current[key] || {};
-    dayState[input.dataset.id] = input.checked;
-    current[key] = dayState;
-    setRoutineState(current);
-  }));
+  el.routineList.innerHTML = routineTemplate.map((item) => `<article class="routine-item"><div class="routine-time">${item.time}</div><label>${item.task}</label><div class="routine-tag">${item.tag}</div></article>`).join('');
 }
 
 function renderTests() {
@@ -208,10 +163,10 @@ function renderTests() {
 
 function renderDownloads() {
   el.downloadList.innerHTML = [
-    { title: 'Weekly revision checklist', subtitle: 'Print-friendly checklist template', url: '#' },
-    { title: 'Mock test log sheet', subtitle: 'Track score and mistakes', url: '#' },
-    { title: 'Important formula summary', subtitle: 'Compact formula handout', url: '#' },
-  ].map((item) => `<article class="link-card"><strong>${item.title}</strong><span class="task-meta">${item.subtitle}</span><a href="${item.url}">Download</a></article>`).join('');
+    { title: 'Weekly revision checklist', subtitle: 'Print-friendly checklist template', url: 'https://www.printablepaper.net/' },
+    { title: 'Mock test log sheet', subtitle: 'Track score and mistakes', url: 'https://docs.google.com/spreadsheets' },
+    { title: 'Important formula summary', subtitle: 'Compact formula handout', url: 'https://openstax.org/subjects/math' },
+  ].map((item) => `<article class="link-card"><strong>${item.title}</strong><span class="task-meta">${item.subtitle}</span><a href="${item.url}" target="_blank" rel="noreferrer">Open</a></article>`).join('');
 }
 
 function renderResources() {
@@ -221,12 +176,18 @@ function renderResources() {
 }
 
 function renderAnalytics() {
-  el.analyticsStats.innerHTML = `<article><h3>${state.progress?.completion_rate || 0}%</h3><p>Completion Rate</p></article>`;
-  el.hoursTrend.innerHTML = '';
-  el.consistencyTrend.innerHTML = '';
+  const completion = state.progress?.completion_rate || 0;
+  const pending = state.progress?.pending || 0;
+  const done = state.progress?.completed || 0;
+  el.analyticsStats.innerHTML = `<article><h3>${completion}%</h3><p>Completion Rate</p></article><article><h3>${done}</h3><p>Completed</p></article><article><h3>${pending}</h3><p>Pending</p></article>`;
+  el.hoursTrend.innerHTML = `<p class="subtitle">Tracked study minutes: ${state.progress?.total_tracked_minutes || 0}</p>`;
+  el.consistencyTrend.innerHTML = `<p class="subtitle">Current streak: ${state.progress?.study_streak || 0} days</p>`;
 }
 
-function applyTheme(theme) { document.documentElement.setAttribute('data-theme', theme || 'dark'); }
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme || 'dark');
+}
+
 function renderSettingsForm() {
   el.settingExamDate.value = state.settings.exam_date || '';
   el.settingDailyGoal.value = state.settings.daily_goal || 3;
@@ -235,12 +196,12 @@ function renderSettingsForm() {
 }
 
 async function reloadData() {
-  const data = await request('/api/bootstrap');
+  const data = await request(api.bootstrap);
   state.tasks = data.tasks;
   state.settings = data.settings;
   state.syllabus = data.syllabus;
   state.user = data.user;
-  state.progress = await request('/api/progress');
+  state.progress = await request(api.progress);
   populateSyllabus();
   renderDashboard();
   renderCountdown();
@@ -252,19 +213,18 @@ async function reloadData() {
   renderRoutine();
   renderDownloads();
   renderResources();
-  renderAuthState();
 }
 
 function wireForms() {
   el.logoutBtn.addEventListener('click', async () => {
-    await request('/api/logout', { method: 'POST' });
-    window.location.href = '/logout';
+    await request(api.logout, { method: 'POST' });
+    window.location.href = config.logoutPageUrl;
   });
 
   el.taskUnit.addEventListener('change', updateTopicOptions);
   el.taskForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    await request('/api/tasks', {
+    await request(api.tasks, {
       method: 'POST',
       body: JSON.stringify({ title: el.taskTitle.value, unit: el.taskUnit.value, topic: el.taskTopic.value, priority: el.taskPriority.value, due_date: el.taskDueDate.value || null, notes: el.taskNotes.value }),
     });
@@ -272,14 +232,15 @@ function wireForms() {
     updateTopicOptions();
     await reloadData();
   });
+
   el.taskSearch.addEventListener('input', () => { state.search = el.taskSearch.value; renderTasks(); });
+
   el.settingsForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    state.settings = await request('/api/settings', { method: 'PUT', body: JSON.stringify({ exam_date: el.settingExamDate.value || null, daily_goal: Number(el.settingDailyGoal.value || 3), theme: el.settingTheme.value }) });
+    state.settings = await request(api.settings, { method: 'PUT', body: JSON.stringify({ exam_date: el.settingExamDate.value || null, daily_goal: Number(el.settingDailyGoal.value || 3), theme: el.settingTheme.value }) });
     applyTheme(state.settings.theme);
     el.settingsMessage.textContent = 'Settings saved successfully.';
-    renderCountdown();
-    renderTests();
+    await reloadData();
   });
 }
 
@@ -292,10 +253,19 @@ function wireTimer() {
       el.timerDisplay.textContent = formatDuration(state.timerSeconds);
     }, 1000);
   });
-  el.timerPause.addEventListener('click', () => { if (state.timerHandle) clearInterval(state.timerHandle); state.timerHandle = null; });
+
+  el.timerPause.addEventListener('click', () => {
+    if (state.timerHandle) {
+      clearInterval(state.timerHandle);
+      state.timerHandle = null;
+    }
+  });
+
   el.timerReset.addEventListener('click', () => {
-    if (state.timerHandle) clearInterval(state.timerHandle);
-    state.timerHandle = null;
+    if (state.timerHandle) {
+      clearInterval(state.timerHandle);
+      state.timerHandle = null;
+    }
     state.timerSeconds = 0;
     localStorage.setItem('studyTimerSeconds', '0');
     el.timerDisplay.textContent = formatDuration(0);
@@ -307,12 +277,11 @@ async function bootstrap() {
   wireTimer();
   state.timerSeconds = Number(localStorage.getItem('studyTimerSeconds') || 0);
   el.timerDisplay.textContent = formatDuration(state.timerSeconds);
-
   await reloadData();
-
-  const initialRoute = document.body?.dataset.initialRoute || 'dashboard';
-  setRoute(initialRoute);
+  setRoute(document.body?.dataset.initialRoute || 'dashboard');
   setInterval(renderCountdown, 60 * 1000);
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error(error);
+});

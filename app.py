@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
@@ -364,6 +364,53 @@ def calculate_unit_breakdown(tasks: list[Task]) -> dict[str, dict[str, int]]:
     return unit_breakdown
 
 
+def calculate_study_streak(tasks: list[Task], *, today: date | None = None) -> int:
+    """Calculate consecutive study days ending today from completed tasks."""
+
+    reference_day = today or date.today()
+    completion_days = {
+        task.created_at.date() for task in tasks if task.completed and task.created_at
+    }
+
+    streak = 0
+    current_day = reference_day
+    while current_day in completion_days:
+        streak += 1
+        current_day -= timedelta(days=1)
+    return streak
+
+
+def calculate_countdown(target_exam: date | None) -> dict[str, int]:
+    """Return countdown values for exam date."""
+
+    if target_exam is None:
+        return {"days": 0, "hours": 0, "minutes": 0}
+
+    target_datetime = datetime.combine(target_exam, datetime.min.time())
+    diff_seconds = max(0, int((target_datetime - datetime.now()).total_seconds()))
+
+    days = diff_seconds // 86400
+    hours = (diff_seconds % 86400) // 3600
+    minutes = (diff_seconds % 3600) // 60
+    return {"days": days, "hours": hours, "minutes": minutes}
+
+
+def build_dashboard_context(user: User, active_route: str) -> dict[str, Any]:
+    tasks = Task.query.filter_by(user_id=user.id).all()
+    setting = get_or_create_settings(user)
+    total_tracked_minutes = sum(45 for task in tasks if task.completed)
+    target_exam = setting.exam_date.isoformat() if setting.exam_date else None
+
+    return {
+        "syllabus": SYLLABUS,
+        "active_route": active_route,
+        "study_streak": calculate_study_streak(tasks),
+        "total_tracked_minutes": total_tracked_minutes,
+        "target_exam": target_exam,
+        "countdown": calculate_countdown(setting.exam_date),
+    }
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
@@ -414,15 +461,15 @@ def create_app() -> Flask:
         flash("Welcome back!", "success")
         return redirect(url_for("render_dashboard"))
 
+    def render_dashboard_page(active_route: str) -> str:
+        user = get_current_user()
+        assert user is not None
+        return render_template("dashboard.html", **build_dashboard_context(user, active_route))
+
     @app.get("/dashboard")
     @login_required_page
     def render_dashboard() -> str:
         return render_dashboard_page("dashboard")
-
-    def render_dashboard_page(active_route: str) -> str:
-        return render_template(
-            "dashboard.html", syllabus=SYLLABUS, active_route=active_route
-        )
 
     @app.get("/plan")
     @login_required_page
@@ -617,13 +664,18 @@ def create_app() -> Flask:
             Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
         )
         tasks = [task.to_dict() for task in task_models]
-        setting = get_or_create_settings(user).to_dict()
+        setting_model = get_or_create_settings(user)
+        total_tracked_minutes = sum(45 for task in task_models if task.completed)
         return jsonify(
             {
                 "tasks": tasks,
-                "settings": setting,
+                "settings": setting_model.to_dict(),
                 "syllabus": SYLLABUS,
                 "user": user.to_dict(),
+                "study_streak": calculate_study_streak(task_models),
+                "total_tracked_minutes": total_tracked_minutes,
+                "target_exam": setting_model.exam_date.isoformat() if setting_model.exam_date else None,
+                "countdown": calculate_countdown(setting_model.exam_date),
             }
         )
 
@@ -721,6 +773,10 @@ def create_app() -> Flask:
                 "completion_rate": round((completed / total) * 100, 1) if total else 0,
                 "unit_breakdown": calculate_unit_breakdown(tasks),
                 "days_left": days_left,
+                "study_streak": calculate_study_streak(tasks),
+                "total_tracked_minutes": sum(45 for task in tasks if task.completed),
+                "target_exam": exam_date.isoformat() if exam_date else None,
+                "countdown": calculate_countdown(exam_date),
             }
         )
 

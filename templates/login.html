@@ -1,34 +1,24 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="dark">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login - CSIR NET Tracker</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
-</head>
-<body>
-  <section class="auth-gate">
-    <h1>Welcome to CSIR NET Tracker</h1>
-    <p class="subtitle">Login to access your personal task board.</p>
+{% extends 'base.html' %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <ul class="subtitle" aria-live="polite">
-          {% for category, message in messages %}
-            <li>{{ message }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
+{% block title %}Login - CSIR NET Tracker{% endblock %}
 
-    <div class="auth-grid single">
-      <form class="panel form-grid compact" action="{{ url_for('login_page_submit') }}" method="post">
-        <h2>Login</h2>
-        <label for="loginUsername">Username</label><input id="loginUsername" name="username" required />
-        <label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required />
-        <button type="submit">Login</button>
+{% block content %}
+<div class="container vh-100 d-flex justify-content-center align-items-center">
+  <div class="row w-100 justify-content-center">
+    <div class="col-md-4 offset-md-4 offset-lg-0">
+      <form class="panel form-grid compact p-4" action="{{ url_for('login_page_submit') }}" method="post">
+        <h2 class="mb-3">Login</h2>
+        <div class="mb-3">
+          <label class="form-label" for="loginUsername">Username</label>
+          <input class="form-control" id="loginUsername" name="username" required />
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="loginPassword">Password</label>
+          <input class="form-control" id="loginPassword" name="password" type="password" required />
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Login</button>
       </form>
     </div>
-  </section>
-</body>
-</html>
+  </div>
+</div>
+{% endblock %}

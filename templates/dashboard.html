@@ -1,12 +1,8 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="dark">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CSIR NET Tracker</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
-</head>
-<body data-initial-route="{{ active_route|default('dashboard') }}">
+{% extends 'base.html' %}
+
+{% block body_attrs %}data-initial-route="{{ active_route|default('dashboard') }}"{% endblock %}
+
+{% block content %}
   <a class="skip-link" href="#mainContent">Skip to main content</a>
   
 
@@ -28,7 +24,7 @@
       <div class="sidebar-footer" aria-live="polite">
         <p id="daysComplete">0/60</p>
         <small>DAYS COMPLETE</small>
-        <p id="trackedMinutes">0m</p>
+        <p id="trackedMinutes">{{ total_tracked_minutes }}m</p>
         <small>TOTAL TRACKED</small>
       </div>
     </aside>
@@ -50,7 +46,7 @@
         <div class="status-strip" role="status" aria-live="polite">
           <span id="lastLogin">Last Login: Just now</span>
           <span id="currentDate"></span>
-          <span id="streakText">Study Streak: 0 days</span>
+          <span id="streakText">Study Streak: {{ study_streak }} days</span>
         </div>
 
         <article class="countdown-card">
@@ -58,11 +54,11 @@
             <h2>CSIR NET Exam Countdown</h2>
           </div>
           <div class="countdown-values" aria-label="Exam countdown values">
-            <div><strong id="countDays">00</strong><span>DAYS</span></div>
-            <div><strong id="countHours">00</strong><span>HOURS</span></div>
-            <div><strong id="countMinutes">00</strong><span>MINUTES</span></div>
+            <div><strong id="countDays">{{ "%02d"|format(countdown.days) }}</strong><span>DAYS</span></div>
+            <div><strong id="countHours">{{ "%02d"|format(countdown.hours) }}</strong><span>HOURS</span></div>
+            <div><strong id="countMinutes">{{ "%02d"|format(countdown.minutes) }}</strong><span>MINUTES</span></div>
           </div>
-          <div class="target-date" id="targetDate">Target Exam: Not set</div>
+          <div class="target-date" id="targetDate">Target Exam: {{ target_exam or "Not set" }}</div>
         </article>
 
         <div class="cards-grid" id="dashboardCards"></div>
@@ -204,6 +200,21 @@
     </main>
   </div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
-</body>
-</html>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.APP_CONFIG = {
+    loginUrl: "{{ url_for('render_login') }}",
+    logoutPageUrl: "{{ url_for('logout_page') }}",
+    api: {
+      bootstrap: "{{ url_for('get_bootstrap_data') }}",
+      progress: "{{ url_for('get_progress') }}",
+      logout: "{{ url_for('logout') }}",
+      tasks: "{{ url_for('list_tasks') }}",
+      settings: "{{ url_for('update_settings') }}"
+    }
+  };
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}
