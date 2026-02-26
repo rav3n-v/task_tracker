@@ -19,7 +19,7 @@ from flask import (
 )
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect
+from sqlalchemy import UniqueConstraint, inspect
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -113,6 +113,62 @@ class Setting(db.Model):
             "daily_goal": self.daily_goal,
             "theme": self.theme,
         }
+
+
+class StudySession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
+    date = db.Column(db.Date, nullable=False, index=True, default=date.today)
+    duration_seconds = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class DailyRoutineTask(db.Model):
+    __table_args__ = (
+        UniqueConstraint("user_id", "task_name", "date", name="uq_daily_routine_user_task_date"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
+    task_name = db.Column(db.String(255), nullable=False)
+    date = db.Column(db.Date, nullable=False, index=True, default=date.today)
+    completed = db.Column(db.Boolean, default=False, nullable=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "task_name": self.task_name,
+            "date": self.date.isoformat(),
+            "completed": self.completed,
+        }
+
+
+class SyllabusTopic(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    subject = db.Column(db.String(120), nullable=False, index=True)
+    topic_name = db.Column(db.String(255), nullable=False)
+
+
+class UserSyllabusProgress(db.Model):
+    __table_args__ = (
+        UniqueConstraint("user_id", "topic_id", name="uq_user_syllabus_topic"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
+    topic_id = db.Column(
+        db.Integer, db.ForeignKey("syllabus_topic.id"), nullable=False, index=True
+    )
+    theory_completed = db.Column(db.Boolean, default=False, nullable=False)
+    pyq_30_done = db.Column(db.Boolean, default=False, nullable=False)
+    revision_1_done = db.Column(db.Boolean, default=False, nullable=False)
+    revision_2_done = db.Column(db.Boolean, default=False, nullable=False)
 
 
 SYLLABUS: dict[str, list[str]] = {
@@ -395,11 +451,96 @@ def calculate_countdown(target_exam: date | None) -> dict[str, int]:
     return {"days": days, "hours": hours, "minutes": minutes}
 
 
+def seed_syllabus_topics() -> None:
+    existing_topics = {
+        (topic.subject, topic.topic_name)
+        for topic in SyllabusTopic.query.with_entities(
+            SyllabusTopic.subject, SyllabusTopic.topic_name
+        ).all()
+    }
+    new_topics = []
+    for subject, topics in SYLLABUS.items():
+        for topic_name in topics:
+            if (subject, topic_name) not in existing_topics:
+                new_topics.append(SyllabusTopic(subject=subject, topic_name=topic_name))
+    if new_topics:
+        db.session.add_all(new_topics)
+        db.session.commit()
+
+
+def get_or_create_daily_routine(user: User, routine_items: list[str]) -> list[DailyRoutineTask]:
+    today = date.today()
+    existing = DailyRoutineTask.query.filter_by(user_id=user.id, date=today).all()
+    existing_by_name = {item.task_name: item for item in existing}
+    created = []
+    for routine_item in routine_items:
+        if routine_item not in existing_by_name:
+            created.append(
+                DailyRoutineTask(user_id=user.id, task_name=routine_item, date=today)
+            )
+    if created:
+        db.session.add_all(created)
+        db.session.commit()
+    return DailyRoutineTask.query.filter_by(user_id=user.id, date=today).all()
+
+
+def calculate_study_time_totals(user: User) -> dict[str, float]:
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    sessions = StudySession.query.filter_by(user_id=user.id).all()
+    today_seconds = sum(s.duration_seconds for s in sessions if s.date == today)
+    week_seconds = sum(s.duration_seconds for s in sessions if s.date >= week_start)
+    return {
+        "today_hours": round(today_seconds / 3600, 2),
+        "week_hours": round(week_seconds / 3600, 2),
+    }
+
+
+def compute_syllabus_progress(user: User) -> dict[str, Any]:
+    topics = SyllabusTopic.query.order_by(SyllabusTopic.subject, SyllabusTopic.id).all()
+    progress_items = UserSyllabusProgress.query.filter_by(user_id=user.id).all()
+    progress_by_topic = {item.topic_id: item for item in progress_items}
+    total = len(topics)
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    counters = {"theory": 0, "pyq": 0, "rev1": 0, "rev2": 0}
+    for topic in topics:
+        p = progress_by_topic.get(topic.id)
+        theory = bool(p and p.theory_completed)
+        pyq = bool(p and p.pyq_30_done)
+        rev1 = bool(p and p.revision_1_done)
+        rev2 = bool(p and p.revision_2_done)
+        counters["theory"] += int(theory)
+        counters["pyq"] += int(pyq)
+        counters["rev1"] += int(rev1)
+        counters["rev2"] += int(rev2)
+        grouped.setdefault(topic.subject, []).append(
+            {
+                "topic_id": topic.id,
+                "topic_name": topic.topic_name,
+                "theory_completed": theory,
+                "pyq_30_done": pyq,
+                "revision_1_done": rev1,
+                "revision_2_done": rev2,
+            }
+        )
+
+    percentages = {
+        "theory_percent": round((counters["theory"] / total) * 100, 1) if total else 0,
+        "pyq_percent": round((counters["pyq"] / total) * 100, 1) if total else 0,
+        "revision_1_percent": round((counters["rev1"] / total) * 100, 1) if total else 0,
+        "revision_2_percent": round((counters["rev2"] / total) * 100, 1) if total else 0,
+    }
+
+    return {"grouped_topics": grouped, "total_topics": total, **percentages}
+
+
 def build_dashboard_context(user: User, active_route: str) -> dict[str, Any]:
     tasks = Task.query.filter_by(user_id=user.id).all()
     setting = get_or_create_settings(user)
     total_tracked_minutes = sum(45 for task in tasks if task.completed)
     target_exam = setting.exam_date.isoformat() if setting.exam_date else None
+    study_totals = calculate_study_time_totals(user)
 
     return {
         "syllabus": SYLLABUS,
@@ -408,6 +549,8 @@ def build_dashboard_context(user: User, active_route: str) -> dict[str, Any]:
         "total_tracked_minutes": total_tracked_minutes,
         "target_exam": target_exam,
         "countdown": calculate_countdown(setting.exam_date),
+        "today_hours": study_totals["today_hours"],
+        "week_hours": study_totals["week_hours"],
     }
 
 
@@ -423,6 +566,16 @@ def create_app() -> Flask:
 
     schema_checked = False
 
+    ROUTINE_TEMPLATE = [
+        "Wake up, Exercise, Wash up",
+        "Practise General / Part A",
+        "Fresh up, Breakfast",
+        "Previous day revision",
+        "Core Study Session 1",
+        "Lunch Break",
+        "Core Study Session 2",
+    ]
+
     @app.before_request
     def ensure_schema_initialized() -> None:
         nonlocal schema_checked
@@ -430,6 +583,7 @@ def create_app() -> Flask:
             return
         if not inspect(db.engine).has_table("user"):
             db.create_all()
+        seed_syllabus_topics()
         schema_checked = True
 
     @app.get("/")
@@ -510,6 +664,57 @@ def create_app() -> Flask:
     @login_required_page
     def render_settings() -> str:
         return render_dashboard_page("settings")
+
+
+    @app.get("/syllabus")
+    @login_required_page
+    def render_syllabus() -> str:
+        user = get_current_user()
+        assert user is not None
+        data = compute_syllabus_progress(user)
+        return render_template(
+            "syllabus.html",
+            grouped_topics=data["grouped_topics"],
+            progress={
+                "theory": data["theory_percent"],
+                "pyq": data["pyq_percent"],
+                "revision_1": data["revision_1_percent"],
+                "revision_2": data["revision_2_percent"],
+            },
+            active_route="syllabus",
+        )
+
+    @app.get("/score-predictor")
+    @login_required_page
+    def render_score_predictor() -> str:
+        user = get_current_user()
+        assert user is not None
+        data = compute_syllabus_progress(user)
+        total = data["total_topics"]
+        theory_percent = (data["theory_percent"] / 100) if total else 0
+        pyq_percent = (data["pyq_percent"] / 100) if total else 0
+        rev1_percent = (data["revision_1_percent"] / 100) if total else 0
+        rev2_percent = (data["revision_2_percent"] / 100) if total else 0
+
+        score = (
+            theory_percent * 0.4
+            + pyq_percent * 0.3
+            + rev1_percent * 0.2
+            + rev2_percent * 0.1
+        ) * 200
+
+        category = "Need improvement"
+        if score > 160:
+            category = "JRF likely"
+        elif score >= 130:
+            category = "NET likely"
+
+        return render_template(
+            "score_predictor.html",
+            predicted_score=round(score, 2),
+            category=category,
+            active_route="score-predictor",
+        )
 
     @app.get("/admin")
     def render_admin() -> str:
@@ -674,10 +879,119 @@ def create_app() -> Flask:
                 "user": user.to_dict(),
                 "study_streak": calculate_study_streak(task_models),
                 "total_tracked_minutes": total_tracked_minutes,
+                "study_time": calculate_study_time_totals(user),
                 "target_exam": setting_model.exam_date.isoformat() if setting_model.exam_date else None,
                 "countdown": calculate_countdown(setting_model.exam_date),
             }
         )
+
+
+    @app.post("/api/study-session")
+    @require_login
+    def create_study_session() -> tuple[Response, int]:
+        user = get_current_user()
+        assert user is not None
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
+
+        duration = payload.get("duration_seconds")
+        if not isinstance(duration, int) or isinstance(duration, bool) or duration <= 0:
+            return jsonify({"error": "duration_seconds must be a positive integer"}), 400
+
+        session_model = StudySession(user_id=user.id, duration_seconds=duration, date=date.today())
+        db.session.add(session_model)
+        db.session.commit()
+
+        totals = calculate_study_time_totals(user)
+        return jsonify({"ok": True, **totals}), 201
+
+    @app.get("/api/daily-routine")
+    @require_login
+    def get_daily_routine() -> Response:
+        user = get_current_user()
+        assert user is not None
+        tasks = get_or_create_daily_routine(user, ROUTINE_TEMPLATE)
+        completed = sum(1 for item in tasks if item.completed)
+        percent = round((completed / len(tasks)) * 100, 1) if tasks else 0
+        return jsonify(
+            {
+                "tasks": [task.to_dict() for task in tasks],
+                "completed_percent": percent,
+            }
+        )
+
+    @app.post("/api/daily-routine")
+    @require_login
+    def update_daily_routine() -> Response:
+        user = get_current_user()
+        assert user is not None
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
+
+        task_name = require_string_field(payload, "task_name")
+        completed = payload.get("completed")
+        if task_name is None:
+            return jsonify({"error": "task_name is required"}), 400
+        if not isinstance(completed, bool):
+            return jsonify({"error": "completed must be a boolean"}), 400
+
+        task = DailyRoutineTask.query.filter_by(user_id=user.id, task_name=task_name, date=date.today()).first()
+        if task is None:
+            task = DailyRoutineTask(user_id=user.id, task_name=task_name, date=date.today())
+            db.session.add(task)
+
+        task.completed = completed
+        db.session.commit()
+
+        tasks = get_or_create_daily_routine(user, ROUTINE_TEMPLATE)
+        done = sum(1 for item in tasks if item.completed)
+        return jsonify({"ok": True, "completed_percent": round((done / len(tasks)) * 100, 1) if tasks else 0})
+
+    @app.get("/api/syllabus-progress")
+    @require_login
+    def get_syllabus_progress() -> Response:
+        user = get_current_user()
+        assert user is not None
+        return jsonify(compute_syllabus_progress(user))
+
+    @app.post("/api/syllabus-progress")
+    @require_login
+    def update_syllabus_progress() -> Response:
+        user = get_current_user()
+        assert user is not None
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
+
+        topic_id = payload.get("topic_id")
+        field = payload.get("field")
+        value = payload.get("value")
+        valid_fields = {"theory_completed", "pyq_30_done", "revision_1_done", "revision_2_done"}
+
+        if not isinstance(topic_id, int) or isinstance(topic_id, bool):
+            return jsonify({"error": "topic_id must be an integer"}), 400
+        if field not in valid_fields:
+            return jsonify({"error": "field is invalid"}), 400
+        if not isinstance(value, bool):
+            return jsonify({"error": "value must be a boolean"}), 400
+
+        topic = db.session.get(SyllabusTopic, topic_id)
+        if topic is None:
+            return jsonify({"error": "Topic not found"}), 404
+
+        progress = UserSyllabusProgress.query.filter_by(user_id=user.id, topic_id=topic_id).first()
+        if progress is None:
+            progress = UserSyllabusProgress(user_id=user.id, topic_id=topic_id)
+            db.session.add(progress)
+
+        setattr(progress, field, value)
+        db.session.commit()
+        return jsonify({"ok": True})
 
     @app.get("/api/tasks")
     @require_login
@@ -775,6 +1089,7 @@ def create_app() -> Flask:
                 "days_left": days_left,
                 "study_streak": calculate_study_streak(tasks),
                 "total_tracked_minutes": sum(45 for task in tasks if task.completed),
+                "study_time": calculate_study_time_totals(user),
                 "target_exam": exam_date.isoformat() if exam_date else None,
                 "countdown": calculate_countdown(exam_date),
             }

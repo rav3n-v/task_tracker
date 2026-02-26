@@ -20,6 +20,8 @@
         <a href="{{ url_for('render_analytics') }}" data-route="analytics" class="{{ 'active' if active_route == 'analytics' else '' }}">Analytics</a>
         <a href="{{ url_for('render_resources') }}" data-route="resources" class="{{ 'active' if active_route == 'resources' else '' }}">Resources</a>
         <a href="{{ url_for('render_settings') }}" data-route="settings" class="{{ 'active' if active_route == 'settings' else '' }}">Settings</a>
+        <a href="{{ url_for('render_syllabus') }}">Syllabus</a>
+        <a href="{{ url_for('render_score_predictor') }}">Score Predictor</a>
       </nav>
       <div class="sidebar-footer" aria-live="polite">
         <p id="daysComplete">0/60</p>
@@ -126,10 +128,11 @@
         <p class="subtitle">Track your daily schedule and study hours</p>
 
         <div class="two-stats">
-          <article><h3 id="hoursToday">0</h3><p>Hours Studied Today</p></article>
-          <article><h3 id="hoursWeek">0</h3><p>Hours This Week</p></article>
+          <article><h3 id="hoursToday">{{ today_hours }}</h3><p>Hours Studied Today</p></article>
+          <article><h3 id="hoursWeek">{{ week_hours }}</h3><p>Hours This Week</p></article>
         </div>
 
+        <p id="routineProgress" class="subtitle">0% tasks completed today</p>
         <div id="routineList" class="routine-list"></div>
       </section>
 
@@ -212,7 +215,9 @@
       progress: "{{ url_for('get_progress') }}",
       logout: "{{ url_for('logout') }}",
       tasks: "{{ url_for('list_tasks') }}",
-      settings: "{{ url_for('update_settings') }}"
+      settings: "{{ url_for('update_settings') }}",
+      studySession: "{{ url_for('create_study_session') }}",
+      dailyRoutine: "{{ url_for('get_daily_routine') }}"
     }
   };
 </script>

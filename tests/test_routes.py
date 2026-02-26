@@ -382,3 +382,48 @@ def test_dashboard_includes_server_side_context_values(auth_client):
     assert 'Study Streak:' in body
     assert 'window.APP_CONFIG' in body
     assert 'countDays' in body
+
+
+def test_study_session_persists_and_updates_totals(auth_client):
+    response = auth_client.post("/api/study-session", json={"duration_seconds": 1800})
+
+    assert response.status_code == 201
+    data = response.get_json()
+    assert data["today_hours"] == 0.5
+    assert data["week_hours"] >= 0.5
+
+
+def test_daily_routine_toggle_and_progress(auth_client):
+    response = auth_client.get("/api/daily-routine")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert len(payload["tasks"]) >= 1
+
+    task_name = payload["tasks"][0]["task_name"]
+    update = auth_client.post(
+        "/api/daily-routine", json={"task_name": task_name, "completed": True}
+    )
+    assert update.status_code == 200
+    assert update.get_json()["completed_percent"] > 0
+
+
+def test_syllabus_progress_endpoint_and_score_page(auth_client):
+    initial = auth_client.get("/api/syllabus-progress")
+    assert initial.status_code == 200
+    grouped = initial.get_json()["grouped_topics"]
+    first_subject = next(iter(grouped))
+    first_topic = grouped[first_subject][0]
+
+    update = auth_client.post(
+        "/api/syllabus-progress",
+        json={
+            "topic_id": first_topic["topic_id"],
+            "field": "theory_completed",
+            "value": True,
+        },
+    )
+    assert update.status_code == 200
+
+    score_page = auth_client.get("/score-predictor")
+    assert score_page.status_code == 200
+    assert "Predicted Score" in score_page.get_data(as_text=True)
