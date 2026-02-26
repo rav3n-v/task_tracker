@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container py-5">
+  <h1>Score Predictor</h1>
+  <p><a href="{{ url_for('render_syllabus') }}">Back to Syllabus</a></p>
+
+  <div class="card">
+    <div class="card-body">
+      <h2>Predicted Score: {{ predicted_score }} / 200</h2>
+      <p>Category: <strong>{{ category }}</strong></p>
+    </div>
+  </div>
+</div>
+{% endblock %}
