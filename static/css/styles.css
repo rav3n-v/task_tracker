@@ -339,3 +339,24 @@ select:focus-visible {
   .routine-item { grid-template-columns: 26px 1fr; }
   .routine-time, .routine-tag { grid-column: span 2; }
 }
+
+.auth-gate {
+  max-width: 900px;
+  margin: 5rem auto;
+  padding: 2rem;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.auth-userbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1.2rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.2rem;
+}

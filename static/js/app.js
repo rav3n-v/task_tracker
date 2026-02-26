@@ -6,6 +6,7 @@ const state = {
   timerSeconds: 0,
   timerHandle: null,
   search: '',
+  user: null,
 };
 
 const routineTemplate = [
@@ -25,6 +26,13 @@ const resourceLinks = [
 ];
 
 const el = {
+  authGate: document.getElementById('authGate'),
+  appLayout: document.getElementById('appLayout'),
+  userDisplay: document.getElementById('userDisplay'),
+  logoutBtn: document.getElementById('logoutBtn'),
+  authMessage: document.getElementById('authMessage'),
+  loginForm: document.getElementById('loginForm'),
+  registerForm: document.getElementById('registerForm'),
   navLinks: document.querySelectorAll('.nav-links a'),
   views: {
     dashboard: document.getElementById('dashboardView'),
@@ -80,59 +88,66 @@ async function request(url, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-  return response.json();
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
+  return data;
 }
 
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function readJson(key, fallback) {
-  const value = localStorage.getItem(key);
-  return value ? JSON.parse(value) : fallback;
-}
-
-function writeJson(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-function getRoutineState() {
-  return readJson('routineState', {});
-}
-
-function setRoutineState(next) {
-  writeJson('routineState', next);
-}
-
-function getDailyLog() {
-  return readJson('dailyStudyLog', {});
-}
-
-function setDailyLog(next) {
-  writeJson('dailyStudyLog', next);
-}
-
-function formatDuration(totalSeconds) {
-  const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
-  const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
-  const s = String(totalSeconds % 60).padStart(2, '0');
-  return `${h}:${m}:${s}`;
-}
+const todayKey = () => new Date().toISOString().slice(0, 10);
+const readJson = (k, f) => (localStorage.getItem(k) ? JSON.parse(localStorage.getItem(k)) : f);
+const writeJson = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const getRoutineState = () => readJson('routineState', {});
+const setRoutineState = (next) => writeJson('routineState', next);
+const getDailyLog = () => readJson('dailyStudyLog', {});
+const formatDuration = (s) => `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 function setRoute(route) {
   const active = Object.hasOwn(el.views, route) ? route : 'dashboard';
   Object.values(el.views).forEach((view) => view.classList.remove('active'));
   el.views[active].classList.add('active');
-
-  el.navLinks.forEach((link) => {
-    link.classList.toggle('active', link.dataset.route === active);
-  });
+  el.navLinks.forEach((link) => link.classList.toggle('active', link.dataset.route === active));
 }
 
-function handleRoute() {
-  const route = window.location.hash.replace('#', '') || 'dashboard';
-  setRoute(route);
+function renderAuthState() {
+  const loggedIn = Boolean(state.user);
+  el.authGate.hidden = loggedIn;
+  el.appLayout.hidden = !loggedIn;
+  el.userDisplay.textContent = loggedIn ? `@${state.user.username}` : '';
+}
+
+function populateSyllabus() {
+  const units = Object.keys(state.syllabus);
+  el.taskUnit.innerHTML = units.map((u) => `<option>${u}</option>`).join('');
+  updateTopicOptions();
+}
+
+function updateTopicOptions() {
+  const topics = state.syllabus[el.taskUnit.value] || [];
+  el.taskTopic.innerHTML = topics.map((t) => `<option>${t}</option>`).join('');
+}
+
+function renderTasks() {
+  const needle = state.search.trim().toLowerCase();
+  const tasks = state.tasks.filter((task) => {
+    if (!needle) return true;
+    return [task.title, task.unit, task.topic].join(' ').toLowerCase().includes(needle);
+  });
+
+  el.taskList.innerHTML = tasks.map((task) => `
+    <article class="task-item">
+      <input class="task-toggle" data-id="${task.id}" type="checkbox" ${task.completed ? 'checked' : ''} />
+      <div><strong>${task.title}</strong><div class="task-meta">${task.unit} · ${task.topic}</div><div class="task-meta">Due: ${task.due_date || 'Not set'}${task.notes ? ` · ${task.notes}` : ''}</div></div>
+      <div class="task-actions"><span class="badge ${task.priority.toLowerCase()}">${task.priority}</span><button class="task-delete" data-id="${task.id}">Delete</button></div>
+    </article>`).join('');
+
+  el.taskList.querySelectorAll('.task-toggle').forEach((checkbox) => checkbox.addEventListener('change', async () => {
+    await request(`/api/tasks/${checkbox.dataset.id}`, { method: 'PATCH', body: JSON.stringify({ completed: checkbox.checked }) });
+    await reloadData();
+  }));
+  el.taskList.querySelectorAll('.task-delete').forEach((button) => button.addEventListener('click', async () => {
+    await request(`/api/tasks/${button.dataset.id}`, { method: 'DELETE' });
+    await reloadData();
+  }));
 }
 
 function renderDashboard() {
@@ -145,15 +160,7 @@ function renderDashboard() {
     { value: String(state.progress.completed || 0), label: 'Mock Tests Completed', percent: Math.min((state.progress.completed / 20) * 100, 100) },
     { value: `${completion}%`, label: 'Success Probability', percent: completion },
   ];
-
-  el.dashboardCards.innerHTML = cards.map((card) => `
-    <article class="metric-card">
-      <h3>${card.value}</h3>
-      <p>${card.label}</p>
-      <div class="metric-bar"><span style="width:${card.percent}%"></span></div>
-    </article>
-  `).join('');
-
+  el.dashboardCards.innerHTML = cards.map((card) => `<article class="metric-card"><h3>${card.value}</h3><p>${card.label}</p><div class="metric-bar"><span style="width:${card.percent}%"></span></div></article>`).join('');
   el.daysComplete.textContent = `${Math.min(state.progress.completed || 0, 60)}/60`;
   el.trackedMinutes.textContent = `${studyMinutes}m`;
 }
@@ -161,205 +168,43 @@ function renderDashboard() {
 function renderHeaderBits() {
   const now = new Date();
   el.currentDate.textContent = `Current Date: ${now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
-
   const log = getDailyLog();
   let streak = 0;
   for (let i = 0; i < 365; i += 1) {
     const day = new Date();
     day.setDate(now.getDate() - i);
     const key = day.toISOString().slice(0, 10);
-    if ((log[key] || 0) > 0) streak += 1;
-    else break;
+    if ((log[key] || 0) > 0) streak += 1; else break;
   }
   el.streakText.textContent = `Study Streak: ${streak} days`;
 }
 
 function renderCountdown() {
-  const targetText = state.settings.exam_date;
-  const fallbackYear = new Date().getFullYear();
-  const target = targetText ? new Date(targetText) : new Date(`${fallbackYear}-12-15T00:00:00`);
-
+  const target = state.settings.exam_date ? new Date(state.settings.exam_date) : new Date(`${new Date().getFullYear()}-12-15T00:00:00`);
   const diff = Math.max(0, target.getTime() - Date.now());
   const minutesTotal = Math.floor(diff / 60000);
-  const days = Math.floor(minutesTotal / (60 * 24));
-  const hours = Math.floor((minutesTotal % (60 * 24)) / 60);
-  const minutes = minutesTotal % 60;
-
-  el.countDays.textContent = String(days).padStart(2, '0');
-  el.countHours.textContent = String(hours).padStart(2, '0');
-  el.countMinutes.textContent = String(minutes).padStart(2, '0');
-
+  el.countDays.textContent = String(Math.floor(minutesTotal / (60 * 24))).padStart(2, '0');
+  el.countHours.textContent = String(Math.floor((minutesTotal % (60 * 24)) / 60)).padStart(2, '0');
+  el.countMinutes.textContent = String(minutesTotal % 60).padStart(2, '0');
   el.targetDate.textContent = `Target Exam: ${target.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}`;
-}
-
-function calculateDayMinutes(day) {
-  const routine = getRoutineState()[day] || {};
-  return routineTemplate.reduce((sum, item) => sum + (routine[item.id] ? item.minutes : 0), 0);
 }
 
 function renderRoutine() {
   const key = todayKey();
-  const stateByDay = getRoutineState();
-  const checkedToday = stateByDay[key] || {};
-
-  el.routineList.innerHTML = routineTemplate.map((item) => `
-    <article class="routine-item">
-      <input type="checkbox" data-id="${item.id}" ${checkedToday[item.id] ? 'checked' : ''} />
-      <div class="routine-time">${item.time}</div>
-      <label>${item.task}</label>
-      <div class="routine-tag">${item.tag}</div>
-    </article>
-  `).join('');
-
-  el.routineList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-    input.addEventListener('change', () => {
-      const current = getRoutineState();
-      const dayState = current[key] || {};
-      dayState[input.dataset.id] = input.checked;
-      current[key] = dayState;
-      setRoutineState(current);
-      updateStudyLog();
-      renderRoutineStats();
-      renderHeaderBits();
-      renderAnalytics();
-    });
-  });
-
-  renderRoutineStats();
-}
-
-function renderRoutineStats() {
-  const now = new Date();
-  const todayMinutes = calculateDayMinutes(todayKey());
-
-  let weekMinutes = 0;
-  for (let i = 0; i < 7; i += 1) {
-    const day = new Date(now);
-    day.setDate(now.getDate() - i);
-    weekMinutes += calculateDayMinutes(day.toISOString().slice(0, 10));
-  }
-
-  el.hoursToday.textContent = (todayMinutes / 60).toFixed(1);
-  el.hoursWeek.textContent = (weekMinutes / 60).toFixed(1);
-}
-
-function updateStudyLog() {
-  const key = todayKey();
-  const log = getDailyLog();
-  log[key] = calculateDayMinutes(key);
-  setDailyLog(log);
-}
-
-function last7Days() {
-  const out = [];
-  for (let i = 6; i >= 0; i -= 1) {
-    const day = new Date();
-    day.setDate(day.getDate() - i);
-    out.push(day);
-  }
-  return out;
-}
-
-function renderAnalytics() {
-  const log = getDailyLog();
-  const series = last7Days().map((d) => {
-    const key = d.toISOString().slice(0, 10);
-    return { day: d.toLocaleDateString(undefined, { weekday: 'short' }), minutes: log[key] || 0 };
-  });
-
-  const avgHours = series.reduce((sum, item) => sum + item.minutes, 0) / (series.length * 60);
-  const consistency = (series.filter((item) => item.minutes > 0).length / series.length) * 100;
-  const predicted = Math.round((state.progress?.completion_rate || 0) * 1.1);
-
-  el.analyticsStats.innerHTML = `
-    <article><p>PERFORMANCE SCORE</p><h3>${Math.round((state.progress?.completion_rate || 0) / 10)}</h3><p>↑ +5%</p></article>
-    <article><p>EFFICIENCY RATING</p><h3>${avgHours.toFixed(1)}</h3><p>→ Improving</p></article>
-    <article><p>PREDICTED SCORE</p><h3>${predicted}</h3><p>Range: ${Math.max(predicted - 20, 0)}-${predicted + 10}</p></article>
-  `;
-
-  const maxMin = Math.max(...series.map((item) => item.minutes), 60);
-  el.hoursTrend.innerHTML = series.map((item) => {
-    const h = Math.max(6, (item.minutes / maxMin) * 160);
-    return `<div class="bar" style="height:${h}px;background:#2eb8d8;"><span>${item.day}</span></div>`;
-  }).join('');
-
-  el.consistencyTrend.innerHTML = series.map((item, index) => {
-    const x = (index / (series.length - 1)) * 95;
-    const y = 95 - ((item.minutes > 0 ? 1 : 0) * 85);
-    return `<div class="point" style="left:${x}%;top:${y}%;"></div>`;
-  }).join('');
-
-  const consistencyText = document.createElement('p');
-  consistencyText.textContent = `Consistency: ${consistency.toFixed(0)}% study days this week`;
-  consistencyText.style.color = '#8d98ad';
-  consistencyText.style.marginTop = '1.2rem';
-  el.consistencyTrend.appendChild(consistencyText);
-}
-
-function populateSyllabus() {
-  const units = Object.keys(state.syllabus);
-  el.taskUnit.innerHTML = units.map((unit) => `<option value="${unit}">${unit}</option>`).join('');
-  updateTopicOptions();
-
-  el.taskUnit.addEventListener('change', updateTopicOptions);
-}
-
-function updateTopicOptions() {
-  const topics = state.syllabus[el.taskUnit.value] || [];
-  el.taskTopic.innerHTML = topics.map((topic) => `<option value="${topic}">${topic}</option>`).join('');
-}
-
-function taskMatchesSearch(task) {
-  if (!state.search) return true;
-  const bag = `${task.title} ${task.unit} ${task.topic}`.toLowerCase();
-  return bag.includes(state.search.toLowerCase());
-}
-
-function renderTasks() {
-  const ordered = [...state.tasks].sort((a, b) => Number(a.completed) - Number(b.completed));
-  const filtered = ordered.filter(taskMatchesSearch);
-  el.taskList.innerHTML = filtered.map((task) => `
-    <article class="task-item">
-      <input class="task-toggle" data-id="${task.id}" type="checkbox" ${task.completed ? 'checked' : ''} />
-      <div>
-        <strong>${task.title}</strong>
-        <div class="task-meta">${task.unit} · ${task.topic}</div>
-        <div class="task-meta">Due: ${task.due_date || 'Not set'}${task.notes ? ` · ${task.notes}` : ''}</div>
-      </div>
-      <div class="task-actions">
-        <span class="badge ${task.priority.toLowerCase()}">${task.priority}</span>
-        <button class="task-delete" data-id="${task.id}">Delete</button>
-      </div>
-    </article>
-  `).join('');
-
-  el.taskList.querySelectorAll('.task-toggle').forEach((checkbox) => {
-    checkbox.addEventListener('change', async () => {
-      await request(`/api/tasks/${checkbox.dataset.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ completed: checkbox.checked }),
-      });
-      await reloadData();
-    });
-  });
-
-  el.taskList.querySelectorAll('.task-delete').forEach((button) => {
-    button.addEventListener('click', async () => {
-      await request(`/api/tasks/${button.dataset.id}`, { method: 'DELETE' });
-      await reloadData();
-    });
-  });
+  const checkedToday = getRoutineState()[key] || {};
+  el.routineList.innerHTML = routineTemplate.map((item) => `<article class="routine-item"><input type="checkbox" data-id="${item.id}" ${checkedToday[item.id] ? 'checked' : ''} /><div class="routine-time">${item.time}</div><label>${item.task}</label><div class="routine-tag">${item.tag}</div></article>`).join('');
+  el.routineList.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener('change', () => {
+    const current = getRoutineState();
+    const dayState = current[key] || {};
+    dayState[input.dataset.id] = input.checked;
+    current[key] = dayState;
+    setRoutineState(current);
+  }));
 }
 
 function renderTests() {
-  const total = state.tasks.length;
   const completed = state.tasks.filter((item) => item.completed).length;
-  const pending = total - completed;
-  el.testStats.innerHTML = `
-    <article class="metric-card"><h3>${completed}</h3><p>Completed Mocks</p></article>
-    <article class="metric-card"><h3>${pending}</h3><p>Pending Mocks</p></article>
-    <article class="metric-card"><h3>${state.settings.daily_goal || 3}</h3><p>Daily Goal</p></article>
-  `;
+  el.testStats.innerHTML = `<article class="metric-card"><h3>${completed}</h3><p>Completed Mocks</p></article><article class="metric-card"><h3>${state.tasks.length - completed}</h3><p>Pending Mocks</p></article><article class="metric-card"><h3>${state.settings.daily_goal || 3}</h3><p>Daily Goal</p></article>`;
 }
 
 function renderDownloads() {
@@ -367,37 +212,22 @@ function renderDownloads() {
     { title: 'Weekly revision checklist', subtitle: 'Print-friendly checklist template', url: '#' },
     { title: 'Mock test log sheet', subtitle: 'Track score and mistakes', url: '#' },
     { title: 'Important formula summary', subtitle: 'Compact formula handout', url: '#' },
-  ].map((item) => `
-    <article class="link-card">
-      <strong>${item.title}</strong>
-      <span class="task-meta">${item.subtitle}</span>
-      <a href="${item.url}">Download</a>
-    </article>
-  `).join('');
+  ].map((item) => `<article class="link-card"><strong>${item.title}</strong><span class="task-meta">${item.subtitle}</span><a href="${item.url}">Download</a></article>`).join('');
 }
 
 function renderResources() {
-  const syllabusRows = Object.entries(state.syllabus).slice(0, 6).map(([unit, topics]) => `
-    <article class="link-card">
-      <strong>${unit}</strong>
-      <span class="task-meta">${topics.slice(0, 2).join(' • ')}</span>
-    </article>
-  `).join('');
-
-  const links = resourceLinks.map((item) => `
-    <article class="link-card">
-      <strong>${item.title}</strong>
-      <a href="${item.url}" target="_blank" rel="noreferrer">Open resource</a>
-    </article>
-  `).join('');
-
+  const syllabusRows = Object.entries(state.syllabus).slice(0, 6).map(([unit, topics]) => `<article class="link-card"><strong>${unit}</strong><span class="task-meta">${topics.slice(0, 2).join(' • ')}</span></article>`).join('');
+  const links = resourceLinks.map((item) => `<article class="link-card"><strong>${item.title}</strong><a href="${item.url}" target="_blank" rel="noreferrer">Open resource</a></article>`).join('');
   el.resourceList.innerHTML = `${syllabusRows}${links}`;
 }
 
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme || 'dark');
+function renderAnalytics() {
+  el.analyticsStats.innerHTML = `<article><h3>${state.progress?.completion_rate || 0}%</h3><p>Completion Rate</p></article>`;
+  el.hoursTrend.innerHTML = '';
+  el.consistencyTrend.innerHTML = '';
 }
 
+function applyTheme(theme) { document.documentElement.setAttribute('data-theme', theme || 'dark'); }
 function renderSettingsForm() {
   el.settingExamDate.value = state.settings.exam_date || '';
   el.settingDailyGoal.value = state.settings.daily_goal || 3;
@@ -405,40 +235,69 @@ function renderSettingsForm() {
   applyTheme(state.settings.theme);
 }
 
+async function reloadData() {
+  const data = await request('/api/bootstrap');
+  state.tasks = data.tasks;
+  state.settings = data.settings;
+  state.syllabus = data.syllabus;
+  state.user = data.user;
+  state.progress = await request('/api/progress');
+  populateSyllabus();
+  renderDashboard();
+  renderCountdown();
+  renderTasks();
+  renderTests();
+  renderSettingsForm();
+  renderAnalytics();
+  renderHeaderBits();
+  renderRoutine();
+  renderDownloads();
+  renderResources();
+  renderAuthState();
+}
+
 function wireForms() {
+  el.loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(el.loginForm);
+    try {
+      await request('/api/login', { method: 'POST', body: JSON.stringify({ username: form.get('username'), password: form.get('password') }) });
+      el.authMessage.textContent = '';
+      await reloadData();
+    } catch (error) { el.authMessage.textContent = error.message; }
+  });
+
+  el.registerForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(el.registerForm);
+    try {
+      await request('/api/register', { method: 'POST', body: JSON.stringify({ username: form.get('username'), password: form.get('password') }) });
+      el.authMessage.textContent = '';
+      await reloadData();
+    } catch (error) { el.authMessage.textContent = error.message; }
+  });
+
+  el.logoutBtn.addEventListener('click', async () => {
+    await request('/api/logout', { method: 'POST' });
+    state.user = null;
+    renderAuthState();
+  });
+
+  el.taskUnit.addEventListener('change', updateTopicOptions);
   el.taskForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     await request('/api/tasks', {
       method: 'POST',
-      body: JSON.stringify({
-        title: el.taskTitle.value,
-        unit: el.taskUnit.value,
-        topic: el.taskTopic.value,
-        priority: el.taskPriority.value,
-        due_date: el.taskDueDate.value || null,
-        notes: el.taskNotes.value,
-      }),
+      body: JSON.stringify({ title: el.taskTitle.value, unit: el.taskUnit.value, topic: el.taskTopic.value, priority: el.taskPriority.value, due_date: el.taskDueDate.value || null, notes: el.taskNotes.value }),
     });
     el.taskForm.reset();
     updateTopicOptions();
     await reloadData();
   });
-
-  el.taskSearch.addEventListener('input', () => {
-    state.search = el.taskSearch.value;
-    renderTasks();
-  });
-
+  el.taskSearch.addEventListener('input', () => { state.search = el.taskSearch.value; renderTasks(); });
   el.settingsForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    state.settings = await request('/api/settings', {
-      method: 'PUT',
-      body: JSON.stringify({
-        exam_date: el.settingExamDate.value || null,
-        daily_goal: Number(el.settingDailyGoal.value || 3),
-        theme: el.settingTheme.value,
-      }),
-    });
+    state.settings = await request('/api/settings', { method: 'PUT', body: JSON.stringify({ exam_date: el.settingExamDate.value || null, daily_goal: Number(el.settingDailyGoal.value || 3), theme: el.settingTheme.value }) });
     applyTheme(state.settings.theme);
     el.settingsMessage.textContent = 'Settings saved successfully.';
     renderCountdown();
@@ -455,58 +314,31 @@ function wireTimer() {
       el.timerDisplay.textContent = formatDuration(state.timerSeconds);
     }, 1000);
   });
-
-  el.timerPause.addEventListener('click', () => {
-    if (!state.timerHandle) return;
-    clearInterval(state.timerHandle);
-    state.timerHandle = null;
-  });
-
+  el.timerPause.addEventListener('click', () => { if (state.timerHandle) clearInterval(state.timerHandle); state.timerHandle = null; });
   el.timerReset.addEventListener('click', () => {
-    if (state.timerHandle) {
-      clearInterval(state.timerHandle);
-      state.timerHandle = null;
-    }
+    if (state.timerHandle) clearInterval(state.timerHandle);
+    state.timerHandle = null;
     state.timerSeconds = 0;
     localStorage.setItem('studyTimerSeconds', '0');
     el.timerDisplay.textContent = formatDuration(0);
   });
 }
 
-async function reloadData() {
-  const data = await request('/api/bootstrap');
-  state.tasks = data.tasks;
-  state.settings = data.settings;
-  state.syllabus = data.syllabus;
-  state.progress = await request('/api/progress');
-
-  renderDashboard();
-  renderCountdown();
-  renderTasks();
-  renderTests();
-  renderSettingsForm();
-  renderAnalytics();
-}
-
 async function bootstrap() {
-  await reloadData();
-
+  wireForms();
+  wireTimer();
   state.timerSeconds = Number(localStorage.getItem('studyTimerSeconds') || 0);
   el.timerDisplay.textContent = formatDuration(state.timerSeconds);
 
-  populateSyllabus();
-  renderHeaderBits();
-  renderRoutine();
-  renderDownloads();
-  renderResources();
-  wireForms();
+  const me = await request('/api/me');
+  state.user = me.user;
+  renderAuthState();
+  if (state.user) await reloadData();
 
+  window.addEventListener('hashchange', () => setRoute(window.location.hash.replace('#', '') || 'dashboard'));
+  el.navLinks.forEach((link) => link.addEventListener('click', () => setRoute(link.dataset.route)));
+  setRoute(window.location.hash.replace('#', '') || 'dashboard');
   setInterval(renderCountdown, 60 * 1000);
 }
 
-window.addEventListener('hashchange', handleRoute);
-el.navLinks.forEach((link) => link.addEventListener('click', () => setRoute(link.dataset.route)));
-
-wireTimer();
-handleRoute();
 bootstrap();

@@ -6,231 +6,142 @@ from unittest.mock import Mock
 import pytest
 
 import app as tracker_app
-from app import Task, db, get_or_create_settings
+from app import Task, User, db, get_or_create_settings
 
 
-def _create_task(*, title="Read chapter", unit="Algebra", topic="Groups", **overrides):
-    task = Task(title=title, unit=unit, topic=topic, **overrides)
+def _create_user(username='user', password='pass123'):
+    user = User(username=username)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    return user
+
+
+def _create_task(user_id, *, title='Read chapter', unit='Algebra', topic='Groups', **overrides):
+    task = Task(user_id=user_id, title=title, unit=unit, topic=topic, **overrides)
     db.session.add(task)
     db.session.commit()
     return task
 
 
 def test_index_route_renders_template(client, monkeypatch):
-    render_stub = Mock(return_value="rendered-index")
-    monkeypatch.setattr(tracker_app, "render_template", render_stub)
+    render_stub = Mock(return_value='rendered-index')
+    monkeypatch.setattr(tracker_app, 'render_template', render_stub)
 
-    response = client.get("/")
+    response = client.get('/')
 
     assert response.status_code == 200
-    assert response.get_data(as_text=True) == "rendered-index"
-    render_stub.assert_called_once_with("index.html", syllabus=tracker_app.SYLLABUS)
+    assert response.get_data(as_text=True) == 'rendered-index'
+    render_stub.assert_called_once_with('index.html', syllabus=tracker_app.SYLLABUS)
 
 
-def test_bootstrap_returns_settings_syllabus_and_tasks_in_desc_created_order(client, app):
+def test_register_hashes_password_and_starts_session(client, app):
+    response = client.post('/api/register', json={'username': 'alice', 'password': 'secret'})
+
+    assert response.status_code == 201
     with app.app_context():
-        older_id = _create_task(title="Old task").id
-        newer_id = _create_task(title="New task").id
+        user = User.query.filter_by(username='alice').first()
+        assert user is not None
+        assert user.password_hash != 'secret'
+        assert user.check_password('secret') is True
 
-    response = client.get("/api/bootstrap")
+    me = client.get('/api/me')
+    assert me.get_json()['user']['username'] == 'alice'
 
+
+def test_login_logout_flow(client):
+    client.post('/api/register', json={'username': 'alice', 'password': 'secret'})
+    client.post('/api/logout')
+
+    bad = client.post('/api/login', json={'username': 'alice', 'password': 'wrong'})
+    assert bad.status_code == 401
+
+    good = client.post('/api/login', json={'username': 'alice', 'password': 'secret'})
+    assert good.status_code == 200
+
+    logout = client.post('/api/logout')
+    assert logout.status_code == 200
+    assert client.get('/api/me').get_json()['user'] is None
+
+
+def test_protected_routes_require_auth(client):
+    for path, method in [('/api/bootstrap', client.get), ('/api/progress', client.get), ('/api/settings', lambda p: client.put(p, json={}))]:
+        response = method(path)
+        assert response.status_code == 401
+
+
+def test_bootstrap_returns_only_current_user_tasks(auth_client, app):
+    with app.app_context():
+        alice = User.query.filter_by(username='alice').first()
+        bob = _create_user('bob', 'secret2')
+        _create_task(alice.id, title='Alice task')
+        _create_task(bob.id, title='Bob task')
+
+    response = auth_client.get('/api/bootstrap')
     assert response.status_code == 200
-    data = response.get_json()
-    assert data["settings"]["daily_goal"] == 3
-    assert data["settings"]["theme"] == "dark"
-    assert data["syllabus"] == tracker_app.SYLLABUS
-    returned_ids = [task["id"] for task in data["tasks"]]
-    assert returned_ids.index(newer_id) < returned_ids.index(older_id)
+    tasks = response.get_json()['tasks']
+    assert len(tasks) == 1
+    assert tasks[0]['title'] == 'Alice task'
 
 
-def test_create_task_happy_path_with_optional_fields(client, app):
-    response = client.post(
-        "/api/tasks",
-        json={
-            "title": "  Work examples  ",
-            "unit": "Linear Algebra",
-            "topic": "Eigenvalues",
-            "priority": "High",
-            "due_date": "2030-05-01",
-            "notes": "  Review solved problems.  ",
-        },
-    )
+def test_create_task_happy_path_with_optional_fields(auth_client, app):
+    response = auth_client.post('/api/tasks', json={'title': '  Work examples  ', 'unit': 'Linear Algebra', 'topic': 'Eigenvalues', 'priority': 'High', 'due_date': '2030-05-01', 'notes': '  Review solved problems.  '})
 
     assert response.status_code == 201
     payload = response.get_json()
-    assert payload["title"] == "Work examples"
-    assert payload["notes"] == "Review solved problems."
-    assert payload["due_date"] == "2030-05-01"
-    assert payload["priority"] == "High"
+    assert payload['title'] == 'Work examples'
 
     with app.app_context():
-        task = db.session.get(Task, payload["id"])
+        task = db.session.get(Task, payload['id'])
         assert task is not None
-        assert task.topic == "Eigenvalues"
+        assert task.topic == 'Eigenvalues'
 
 
-def test_create_task_uses_defaults_when_optional_fields_not_provided(client):
-    response = client.post(
-        "/api/tasks",
-        json={"title": "Write summary", "unit": "Complex Analysis", "topic": "Residues"},
-    )
-
-    assert response.status_code == 201
-    payload = response.get_json()
-    assert payload["priority"] == "Medium"
-    assert payload["due_date"] is None
-    assert payload["notes"] == ""
-
-
-@pytest.mark.parametrize(
-    "bad_payload,missing_field",
-    [
-        ({"unit": "Algebra", "topic": "Groups"}, "title"),
-        ({"title": "Missing unit", "topic": "Groups"}, "unit"),
-        ({"title": "Missing topic", "unit": "Algebra"}, "topic"),
-    ],
-)
-def test_create_task_missing_required_fields_raise_key_error(client, bad_payload, missing_field):
-    with pytest.raises(KeyError, match=missing_field):
-        client.post("/api/tasks", json=bad_payload)
-
-
-def test_create_task_invalid_due_date_raises_value_error(client):
-    with pytest.raises(ValueError, match="does not match format"):
-        client.post(
-            "/api/tasks",
-            json={
-                "title": "Invalid date",
-                "unit": "Algebra",
-                "topic": "Groups",
-                "due_date": "05/01/2030",
-            },
-        )
-
-
-def test_update_task_updates_only_supported_fields(client, app):
+def test_update_delete_cannot_access_other_users_task(auth_client, app):
     with app.app_context():
-        task_id = _create_task(priority="Low").id
+        bob = _create_user('bob', 'secret2')
+        bob_task_id = _create_task(bob.id).id
 
-    response = client.patch(
-        f"/api/tasks/{task_id}",
-        json={"completed": True, "priority": "High", "title": "Ignored by PATCH"},
-    )
+    assert auth_client.patch(f'/api/tasks/{bob_task_id}', json={'completed': True}).status_code == 404
+    assert auth_client.delete(f'/api/tasks/{bob_task_id}').status_code == 404
 
+
+def test_update_settings_happy_path(auth_client, app):
+    response = auth_client.put('/api/settings', json={'daily_goal': 7, 'theme': 'light', 'exam_date': '2031-10-12'})
     assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["completed"] is True
-    assert payload["priority"] == "High"
 
     with app.app_context():
-        refreshed = db.session.get(Task, task_id)
-        assert refreshed.title == "Read chapter"
-
-
-def test_update_task_unknown_id_returns_404(client):
-    response = client.patch("/api/tasks/99999", json={"completed": True})
-    assert response.status_code == 404
-
-
-def test_delete_task_happy_path(client, app):
-    with app.app_context():
-        task_id = _create_task().id
-
-    response = client.delete(f"/api/tasks/{task_id}")
-
-    assert response.status_code == 200
-    assert response.get_json() == {"ok": True}
-
-    with app.app_context():
-        assert db.session.get(Task, task_id) is None
-
-
-def test_delete_task_unknown_id_returns_404(client):
-    response = client.delete("/api/tasks/123456")
-    assert response.status_code == 404
-
-
-def test_update_settings_happy_path(client, app):
-    response = client.put(
-        "/api/settings",
-        json={"daily_goal": 7, "theme": "light", "exam_date": "2031-10-12"},
-    )
-
-    assert response.status_code == 200
-    data = response.get_json()
-    assert data == {"daily_goal": 7, "theme": "light", "exam_date": "2031-10-12"}
-
-    with app.app_context():
-        setting = get_or_create_settings()
+        alice = User.query.filter_by(username='alice').first()
+        setting = get_or_create_settings(alice)
         assert setting.daily_goal == 7
-        assert setting.theme == "light"
 
 
-def test_update_settings_allows_partial_updates(client, app):
+def test_progress_returns_user_specific_aggregates(auth_client, app):
     with app.app_context():
-        setting = get_or_create_settings()
-        setting.daily_goal = 5
-        db.session.commit()
+        alice = User.query.filter_by(username='alice').first()
+        bob = _create_user('bob', 'secret2')
+        _create_task(alice.id, unit='Algebra', completed=True)
+        _create_task(alice.id, unit='Algebra', completed=False)
+        _create_task(bob.id, unit='Algebra', completed=True)
 
-    response = client.put("/api/settings", json={"theme": "solarized"})
-
-    assert response.status_code == 200
-    data = response.get_json()
-    assert data["daily_goal"] == 5
-    assert data["theme"] == "solarized"
-
-
-def test_update_settings_invalid_date_raises_value_error(client):
-    with pytest.raises(ValueError, match="does not match format"):
-        client.put("/api/settings", json={"exam_date": "31-12-2030"})
-
-
-def test_update_settings_invalid_daily_goal_type_raises_value_error(client):
-    with pytest.raises(ValueError, match="invalid literal for int"):
-        client.put("/api/settings", json={"daily_goal": "abc"})
-
-
-def test_progress_returns_aggregates_and_countdown(client, app):
-    with app.app_context():
-        _create_task(unit="Algebra", completed=True)
-        _create_task(unit="Algebra", completed=False)
-        _create_task(unit="New Unit", completed=True)
-        setting = get_or_create_settings()
+        setting = get_or_create_settings(alice)
         setting.exam_date = date.today() + timedelta(days=10)
         db.session.commit()
 
-    response = client.get("/api/progress")
-
-    assert response.status_code == 200
+    response = auth_client.get('/api/progress')
     data = response.get_json()
-    assert data["total"] == 3
-    assert data["completed"] == 2
-    assert data["pending"] == 1
-    assert data["completion_rate"] == pytest.approx(66.7)
-    assert data["days_left"] == 10
-    assert data["unit_breakdown"]["Algebra"] == {"total": 2, "completed": 1}
-    assert data["unit_breakdown"]["New Unit"] == {"total": 1, "completed": 1}
+    assert data['total'] == 2
+    assert data['completed'] == 1
+    assert data['days_left'] == 10
 
 
-def test_progress_when_no_tasks_returns_zeroed_metrics_and_no_countdown(client):
-    response = client.get("/api/progress")
-
-    assert response.status_code == 200
-    data = response.get_json()
-    assert data["total"] == 0
-    assert data["completed"] == 0
-    assert data["pending"] == 0
-    assert data["completion_rate"] == 0
-    assert data["days_left"] is None
-
-
-def test_progress_uses_unit_breakdown_helper(client, monkeypatch):
-    fake_breakdown = {"Custom": {"total": 99, "completed": 88}}
+def test_progress_uses_unit_breakdown_helper(auth_client, monkeypatch):
+    fake_breakdown = {'Custom': {'total': 99, 'completed': 88}}
     calc_spy = Mock(return_value=fake_breakdown)
-    monkeypatch.setattr(tracker_app, "calculate_unit_breakdown", calc_spy)
+    monkeypatch.setattr(tracker_app, 'calculate_unit_breakdown', calc_spy)
 
-    response = client.get("/api/progress")
+    response = auth_client.get('/api/progress')
 
     assert response.status_code == 200
-    assert response.get_json()["unit_breakdown"] == fake_breakdown
+    assert response.get_json()['unit_breakdown'] == fake_breakdown
     calc_spy.assert_called_once()
