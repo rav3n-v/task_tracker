@@ -168,7 +168,22 @@ SYLLABUS: dict[str, list[str]] = {
 def parse_optional_date(date_value: str | None) -> date | None:
     """Parse an ISO date string (YYYY-MM-DD) when present."""
 
-    return datetime.strptime(date_value, DATE_FORMAT).date() if date_value else None
+    if date_value is None:
+        return None
+    normalized = str(date_value).strip()
+    if not normalized:
+        return None
+    return datetime.strptime(normalized, DATE_FORMAT).date()
+
+
+def require_string_field(payload: dict[str, Any], field: str) -> str | None:
+    """Return a normalized string field or None when missing/blank."""
+
+    value = payload.get(field)
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
 
 
 def parse_json_payload() -> tuple[dict[str, Any] | None, tuple[Response, int] | None]:
@@ -212,6 +227,32 @@ def validate_task_payload(
                 parse_optional_date(str(due_date))
             except ValueError:
                 errors["due_date"] = f"due_date must use format {DATE_FORMAT}"
+
+    return errors
+
+
+def validate_settings_payload(payload: dict[str, Any]) -> dict[str, str]:
+    """Validate settings update payload and return field-level error messages."""
+
+    errors: dict[str, str] = {}
+
+    if "daily_goal" in payload:
+        value = payload["daily_goal"]
+        if not isinstance(value, int) or isinstance(value, bool):
+            errors["daily_goal"] = "daily_goal must be an integer"
+        elif value < 0:
+            errors["daily_goal"] = "daily_goal must be greater than or equal to 0"
+
+    if "theme" in payload and not str(payload["theme"]).strip():
+        errors["theme"] = "theme cannot be blank"
+
+    if "exam_date" in payload:
+        exam_date = payload["exam_date"]
+        if exam_date not in (None, ""):
+            try:
+                parse_optional_date(str(exam_date))
+            except ValueError:
+                errors["exam_date"] = f"exam_date must use format {DATE_FORMAT}"
 
     return errors
 
@@ -283,9 +324,12 @@ def update_task_from_payload(task: Task, payload: dict[str, Any]) -> None:
 def update_settings_from_payload(setting: Setting, payload: dict[str, Any]) -> None:
     """Apply mutable settings fields from API payload."""
 
-    setting.daily_goal = int(payload.get("daily_goal", setting.daily_goal))
-    setting.theme = str(payload.get("theme", setting.theme))
-    setting.exam_date = parse_optional_date(payload.get("exam_date"))
+    if "daily_goal" in payload:
+        setting.daily_goal = int(payload["daily_goal"])
+    if "theme" in payload:
+        setting.theme = str(payload["theme"]).strip()
+    if "exam_date" in payload:
+        setting.exam_date = parse_optional_date(payload.get("exam_date"))
 
 
 def calculate_unit_breakdown(tasks: list[Task]) -> dict[str, dict[str, int]]:
@@ -329,10 +373,10 @@ def create_app() -> Flask:
         if error:
             return error
         assert payload is not None
-        username = str(payload["username"]).strip()
-        password = str(payload["password"])
+        username = require_string_field(payload, "username")
+        password = payload.get("password")
 
-        if not username or not password:
+        if username is None or password is None or str(password) == "":
             return jsonify({"error": "Username and password are required"}), 400
 
         if User.query.filter_by(username=username).first() is not None:
@@ -352,11 +396,14 @@ def create_app() -> Flask:
         if error:
             return error
         assert payload is not None
-        username = str(payload["username"]).strip()
-        password = str(payload["password"])
+        username = require_string_field(payload, "username")
+        password = payload.get("password")
+
+        if username is None or password is None or str(password) == "":
+            return jsonify({"error": "Username and password are required"}), 400
 
         user = User.query.filter_by(username=username).first()
-        if user is None or not user.check_password(password):
+        if user is None or not user.check_password(str(password)):
             return jsonify({"error": "Invalid username or password"}), 401
 
         session["user_id"] = user.id
@@ -466,6 +513,9 @@ def create_app() -> Flask:
         if error:
             return error
         assert payload is not None
+        errors = validate_settings_payload(payload)
+        if errors:
+            return jsonify({"error": "Validation failed", "details": errors}), 400
         update_settings_from_payload(setting, payload)
         db.session.commit()
         return jsonify(setting.to_dict())

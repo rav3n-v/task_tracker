@@ -216,6 +216,33 @@ def test_update_settings_happy_path(auth_client, app):
         assert setting.daily_goal == 7
 
 
+def test_register_requires_username_and_password(client):
+    missing_username = client.post("/api/register", json={"password": "secret"})
+    assert missing_username.status_code == 400
+
+    missing_password = client.post("/api/register", json={"username": "alice"})
+    assert missing_password.status_code == 400
+
+
+def test_login_requires_username_and_password(client):
+    response = client.post("/api/login", json={"username": "alice"})
+    assert response.status_code == 400
+
+
+def test_update_settings_validation_errors(auth_client):
+    response = auth_client.put(
+        "/api/settings",
+        json={"daily_goal": True, "theme": "   ", "exam_date": "2031/10/12"},
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["error"] == "Validation failed"
+    assert payload["details"]["daily_goal"] == "daily_goal must be an integer"
+    assert payload["details"]["theme"] == "theme cannot be blank"
+    assert "exam_date" in payload["details"]
+
+
 def test_progress_returns_user_specific_aggregates(auth_client, app):
     with app.app_context():
         alice = User.query.filter_by(username="alice").first()
