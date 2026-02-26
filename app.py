@@ -61,7 +61,9 @@ class Task(db.Model):
     """Database model representing one study task."""
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
     title = db.Column(db.String(160), nullable=False)
     unit = db.Column(db.String(120), nullable=False)
     topic = db.Column(db.String(180), nullable=False)
@@ -93,7 +95,9 @@ class Setting(db.Model):
     """Database model for user-specific app settings."""
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True
+    )
     exam_date = db.Column(db.Date, nullable=True)
     daily_goal = db.Column(db.Integer, default=DEFAULT_DAILY_GOAL)
     theme = db.Column(db.String(20), default=DEFAULT_THEME)
@@ -192,11 +196,16 @@ def require_string_field(payload: dict[str, Any], field: str) -> str | None:
 def parse_json_payload() -> tuple[dict[str, Any] | None, tuple[Response, int] | None]:
     payload = request.get_json(silent=True)
     if payload is None or not isinstance(payload, dict):
-        return None, (jsonify({"error": "Request body must be a valid JSON object"}), 400)
+        return None, (
+            jsonify({"error": "Request body must be a valid JSON object"}),
+            400,
+        )
     return payload, None
 
 
-def validate_task_payload(payload: dict[str, Any], *, partial: bool = False) -> dict[str, str]:
+def validate_task_payload(
+    payload: dict[str, Any], *, partial: bool = False
+) -> dict[str, str]:
     errors: dict[str, str] = {}
     required_fields = ["title", "unit", "topic"]
     if not partial:
@@ -256,7 +265,9 @@ def get_current_user() -> User | None:
     return db.session.get(User, user_id)
 
 
-def require_login(view: Callable[..., Response | tuple[Response, int] | str]) -> Callable[..., Response | tuple[Response, int] | str]:
+def require_login(
+    view: Callable[..., Response | tuple[Response, int] | str],
+) -> Callable[..., Response | tuple[Response, int] | str]:
     @wraps(view)
     def wrapped(*args: Any, **kwargs: Any) -> Response | tuple[Response, int] | str:
         if get_current_user() is None:
@@ -266,7 +277,9 @@ def require_login(view: Callable[..., Response | tuple[Response, int] | str]) ->
     return wrapped
 
 
-def login_required_page(view: Callable[..., Response | str]) -> Callable[..., Response | str]:
+def login_required_page(
+    view: Callable[..., Response | str],
+) -> Callable[..., Response | str]:
     @wraps(view)
     def wrapped(*args: Any, **kwargs: Any) -> Response | str:
         if get_current_user() is None:
@@ -277,7 +290,9 @@ def login_required_page(view: Callable[..., Response | str]) -> Callable[..., Re
     return wrapped
 
 
-def admin_required_page(view: Callable[..., Response | str]) -> Callable[..., Response | str]:
+def admin_required_page(
+    view: Callable[..., Response | str],
+) -> Callable[..., Response | str]:
     @wraps(view)
     def wrapped(*args: Any, **kwargs: Any) -> Response | str:
         if not session.get("is_admin"):
@@ -337,7 +352,9 @@ def update_settings_from_payload(setting: Setting, payload: dict[str, Any]) -> N
 
 
 def calculate_unit_breakdown(tasks: list[Task]) -> dict[str, dict[str, int]]:
-    unit_breakdown: dict[str, dict[str, int]] = {unit: {"total": 0, "completed": 0} for unit in SYLLABUS}
+    unit_breakdown: dict[str, dict[str, int]] = {
+        unit: {"total": 0, "completed": 0} for unit in SYLLABUS
+    }
     for task in tasks:
         unit_breakdown.setdefault(task.unit, {"total": 0, "completed": 0})
         unit_breakdown[task.unit]["total"] += 1
@@ -403,7 +420,10 @@ def create_app() -> Flask:
             flash("Admin username and password are required.", "error")
             return redirect(url_for("render_admin"))
 
-        valid_admin = username == app.config["ADMIN_USERNAME"] and password == app.config["ADMIN_PASSWORD"]
+        valid_admin = (
+            username == app.config["ADMIN_USERNAME"]
+            and password == app.config["ADMIN_PASSWORD"]
+        )
         if not valid_admin:
             flash("Invalid admin credentials.", "error")
             return redirect(url_for("render_admin"))
@@ -462,7 +482,10 @@ def create_app() -> Flask:
         if username is None or password is None or str(password) == "":
             return jsonify({"error": "Username and password are required"}), 400
 
-        valid_admin = username == app.config["ADMIN_USERNAME"] and str(password) == app.config["ADMIN_PASSWORD"]
+        valid_admin = (
+            username == app.config["ADMIN_USERNAME"]
+            and str(password) == app.config["ADMIN_PASSWORD"]
+        )
         if not valid_admin:
             return jsonify({"error": "Invalid admin credentials"}), 401
 
@@ -533,17 +556,28 @@ def create_app() -> Flask:
     def get_bootstrap_data() -> Response:
         user = get_current_user()
         assert user is not None
-        task_models = Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
+        task_models = (
+            Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
+        )
         tasks = [task.to_dict() for task in task_models]
         setting = get_or_create_settings(user).to_dict()
-        return jsonify({"tasks": tasks, "settings": setting, "syllabus": SYLLABUS, "user": user.to_dict()})
+        return jsonify(
+            {
+                "tasks": tasks,
+                "settings": setting,
+                "syllabus": SYLLABUS,
+                "user": user.to_dict(),
+            }
+        )
 
     @app.get("/api/tasks")
     @require_login
     def list_tasks() -> Response:
         user = get_current_user()
         assert user is not None
-        tasks = Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
+        tasks = (
+            Task.query.filter_by(user_id=user.id).order_by(Task.created_at.desc()).all()
+        )
         return jsonify({"tasks": [task.to_dict() for task in tasks]}), 200
 
     @app.post("/api/tasks")

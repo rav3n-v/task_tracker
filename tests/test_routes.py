@@ -37,7 +37,6 @@ def test_root_redirects_to_login_when_unauthenticated(client):
     assert response.headers["Location"].endswith("/login")
 
 
-
 def test_register_hashes_password(client, app):
     _admin_login(client)
     response = client.post(
@@ -68,7 +67,9 @@ def test_login_form_redirects_to_dashboard_on_success(client):
     client.post("/api/admin/logout")
 
     response = client.post(
-        "/login", data={"username": "alice", "password": "secret"}, follow_redirects=False
+        "/login",
+        data={"username": "alice", "password": "secret"},
+        follow_redirects=False,
     )
 
     assert response.status_code == 302
