@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from unittest.mock import Mock
 
 import app as tracker_app
-from app import Task, User, db, get_or_create_settings
+from app import Task, User, create_app, db, get_or_create_settings
 
 
 def _create_user(username="user", password="pass123"):
@@ -28,6 +28,31 @@ def _admin_login(client, username="admin", password="admin123"):
     return client.post(
         "/api/admin/login", json={"username": username, "password": password}
     )
+
+
+def test_first_request_auto_creates_schema_for_account_creation(tmp_path):
+    database_path = tmp_path / "fresh_runtime.db"
+    flask_app = create_app()
+    flask_app.config.update(
+        TESTING=True,
+        SQLALCHEMY_DATABASE_URI=f"sqlite:///{database_path}",
+        SECRET_KEY="test-secret",
+    )
+    client = flask_app.test_client()
+
+    admin_response = client.post(
+        "/api/admin/login", json={"username": "admin", "password": "admin123"}
+    )
+    assert admin_response.status_code == 200
+
+    register_response = client.post(
+        "/api/register", json={"username": "runtime_user", "password": "secret"}
+    )
+    assert register_response.status_code == 201
+
+    with flask_app.app_context():
+        created_user = User.query.filter_by(username="runtime_user").first()
+        assert created_user is not None
 
 
 def test_root_redirects_to_login_when_unauthenticated(client):
