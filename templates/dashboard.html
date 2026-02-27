@@ -12,7 +12,7 @@
       <div class="auth-userbar"><span id="userDisplay"></span><button id="logoutBtn" type="button">Logout</button></div>
       <nav class="nav-links" aria-label="Sections">
   <a href="/dashboard" data-route="dashboard">Dashboard</a>
-<a href="/plan" data-route="plan">60-Day Plan</a>
+<a href="/plan" data-route="plan">Daily Planner</a>
 <a href="/routine" data-route="routine">Daily Routine</a>
 <a href="/session" data-route="session">Study Session</a>
 <a href="/tests" data-route="tests">Practice Tests</a>
@@ -68,72 +68,32 @@
       </section>
 
       <section id="planView" class="view">
-        <h1>60-Day Plan</h1>
+        <h1>Daily Planner</h1>
         <p class="subtitle">Create and track unit-wise tasks with due dates.</p>
 
-        <form id="taskForm" class="panel form-grid" aria-labelledby="taskFormHeading">
-          <h2 id="taskFormHeading" class="sr-only">Add a new task</h2>
-
-          <div class="field-group">
-            <label for="taskTitle">Task title</label>
-            <input id="taskTitle" type="text" placeholder="Task title" autocomplete="off" required />
+        <div class="panel daily-planner-panel">
+          <div class="daily-planner-input-row">
+            <input id="dailyTaskTitle" type="text" placeholder="Add a task for today" autocomplete="off" />
+            <button id="addDailyTaskBtn" type="button">Add Task</button>
           </div>
-
-          <div class="field-group">
-            <label for="taskUnit">Unit</label>
-            <select id="taskUnit" required></select>
-          </div>
-
-          <div class="field-group">
-            <label for="taskTopic">Topic</label>
-            <select id="taskTopic" required></select>
-          </div>
-
-          <div class="field-group">
-            <label for="taskPriority">Priority</label>
-            <select id="taskPriority" aria-describedby="priorityHelp">
-              <option>High</option>
-              <option selected>Medium</option>
-              <option>Low</option>
-            </select>
-            <small id="priorityHelp" class="helper-text">High priority tasks are shown with stronger visual emphasis.</small>
-          </div>
-
-          <div class="field-group">
-            <label for="taskDueDate">Due date</label>
-            <input id="taskDueDate" type="date" />
-          </div>
-
-          <div class="field-group">
-            <label for="taskNotes">Notes (optional)</label>
-            <input id="taskNotes" type="text" placeholder="Notes (optional)" />
-          </div>
-
-          <button type="submit">Add Task</button>
-        </form>
-
-        <label class="sr-only" for="taskSearch">Search tasks</label>
-        <input id="taskSearch" class="search-input" type="search" placeholder="Search by title, topic, or unit" />
-
-        <div class="priority-legend" aria-label="Task priority legend">
-          <span class="badge high">High priority</span>
-          <span class="badge medium">Medium priority</span>
-          <span class="badge low">Low priority</span>
+          <p id="dailyPlannerMeta" class="subtitle">0/0 completed · 0% complete</p>
+          <div class="metric-bar"><span id="dailyPlannerProgressBar" style="width: 0%;"></span></div>
+          <p id="dailyPlannerStreak" class="subtitle">Streak: 0 days</p>
+          <div id="dailyPlannerList" class="task-list" aria-live="polite"></div>
         </div>
-
-        <div id="taskList" class="task-list" aria-live="polite"></div>
-      </section>
+</section>
 
       <section id="routineView" class="view">
-        <h1>Daily Routine Planner</h1>
-        <p class="subtitle">Track your daily schedule and study hours</p>
+        <h1>Daily Routine</h1>
+        <p class="subtitle">Fixed routine blocks with daily completion tracking.</p>
 
         <div class="two-stats">
           <article><h3 id="hoursToday">{{ today_hours }}</h3><p>Hours Studied Today</p></article>
           <article><h3 id="hoursWeek">{{ week_hours }}</h3><p>Hours This Week</p></article>
         </div>
 
-        <p id="routineProgress" class="subtitle">0% tasks completed today</p>
+        <p id="routineProgress" class="subtitle">0/0 completed · 0%</p>
+        <div class="metric-bar"><span id="routineProgressBar" style="width: 0%;"></span></div>
         <div id="routineList" class="routine-list"></div>
       </section>
 
@@ -147,8 +107,9 @@
 
       <section id="testsView" class="view">
         <h1>Practice Tests</h1>
-        <p class="subtitle">Track your mock test attempts.</p>
-        <div id="testStats" class="cards-grid"></div>
+        <p class="subtitle">Track attempts and scores for 10 mock tests.</p>
+        <div id="mockStats" class="three-stats"></div>
+        <div id="mockTestsList" class="task-list"></div>
       </section>
 
       <section id="downloadsView" class="view">
@@ -158,21 +119,9 @@
       </section>
 
       <section id="analyticsView" class="view">
-        <h1>Advanced Analytics</h1>
-        <p class="subtitle">Detailed insights into your preparation with predictive analysis</p>
-
-        <div class="three-stats" id="analyticsStats"></div>
-
-        <div class="charts-grid">
-          <article>
-            <h2>Daily Study Hours Trend</h2>
-            <div id="hoursTrend" class="bar-chart"></div>
-          </article>
-          <article>
-            <h2>Study Consistency</h2>
-            <div id="consistencyTrend" class="line-chart"></div>
-          </article>
-        </div>
+        <h1>Analytics</h1>
+        <p class="subtitle">Unified performance summary across planner, routine, tests, and syllabus.</p>
+        <div id="analyticsSummaryGrid" class="cards-grid"></div>
       </section>
 
       <section id="resourcesView" class="view">
@@ -220,20 +169,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-  window.APP_CONFIG = {
-    loginUrl: "{{ url_for('render_login') }}",
-    logoutPageUrl: "{{ url_for('logout_page') }}",
-    api: {
-      bootstrap: "{{ url_for('get_bootstrap_data') }}",
-      progress: "{{ url_for('get_progress') }}",
-      logout: "{{ url_for('logout') }}",
-      tasks: "{{ url_for('list_tasks') }}",
-      settings: "{{ url_for('update_settings') }}",
-      studySession: "{{ url_for('create_study_session') }}",
-      dailyRoutine: "{{ url_for('get_daily_routine') }}"
-    }
-  };
-</script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 {% endblock %}

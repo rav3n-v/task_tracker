@@ -9,7 +9,7 @@
 
   <div class="cards-grid score-summary-grid">
     <article class="metric-card">
-      <h3>{{ predicted_score }}</h3>
+      <h3><span id="predictorLiveScore">{{ predicted_score }}</span></h3>
       <p>Final Predicted Score / 200</p>
     </article>
     <article class="metric-card">
@@ -17,7 +17,7 @@
       <p>Baseline Aptitude Score</p>
     </article>
     <article class="metric-card">
-      <h3>{{ category }}</h3>
+      <h3><span id="predictorConfidence">{{ category }}</span></h3>
       <p>Probability Category</p>
     </article>
   </div>
