@@ -385,3 +385,195 @@ select:focus-visible {
   gap: .35rem .75rem;
   color: var(--muted);
 }
+.subject-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.subject-percent {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.subject-progress {
+  margin: 10px 0 20px 0;
+}
+.metric-bar {
+  height: 8px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.metric-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #00d4ff, #00ffa3);
+  transition: width 0.3s ease;
+}
+.syllabus-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+}
+
+.syllabus-left {
+  flex: 1;
+  padding-right: 20px;
+}
+
+.syllabus-right {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.syllabus-right label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+/* ========================================
+   Syllabus Layout Improvements
+======================================== */
+
+.subject-panel {
+  margin-top: 28px;
+}
+
+.subject-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.subject-percent {
+  font-size: 1.3rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.subject-progress {
+  margin: 10px 0 20px 0;
+}
+
+/* Fix overlapping topic rows */
+.syllabus-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.syllabus-left {
+  flex: 1;
+  padding-right: 24px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.syllabus-right {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.syllabus-right label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1.3rem;
+  opacity: 0.9;
+  cursor: pointer;
+}
+
+.syllabus-right input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Responsive fix */
+@media (max-width: 900px) {
+  .syllabus-item {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .syllabus-right {
+    gap: 14px;
+  }
+}
+/* ========================================
+   Login Page Styling
+======================================== */
+
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.auth-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 3rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 10px 35px rgba(0,0,0,0.35);
+}
+
+.auth-card h2 {
+  margin: 0 0 2rem 0;
+  text-align: center;
+  color: var(--accent);
+  font-size: 2.2rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: .6rem;
+  margin-bottom: 1.6rem;
+}
+
+.auth-field label {
+  font-size: 1.3rem;
+  color: var(--muted);
+}
+
+.auth-field input {
+  border: 1px solid var(--line);
+  background: #202938;
+  color: var(--text);
+  border-radius: 8px;
+  padding: .8rem 1rem;
+  font-size: 1.4rem;
+}
+
+.auth-button {
+  width: 100%;
+  margin-top: .5rem;
+  padding: .9rem;
+  font-size: 1.4rem;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #08232a;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.auth-button:hover {
+  opacity: 0.9;
+}

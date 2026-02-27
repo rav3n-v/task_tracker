@@ -720,8 +720,44 @@ def create_app() -> Flask:
     def render_dashboard_page(active_route: str) -> str:
         user = get_current_user()
         assert user is not None
-        return render_template("dashboard.html", **build_dashboard_context(user, active_route))
 
+        dashboard_context = build_dashboard_context(user, active_route)
+
+        # Always compute syllabus data once
+        syllabus_data = compute_syllabus_progress(user)
+
+        # Build progress dict exactly like old syllabus.html expected
+        progress = {
+            "theory": syllabus_data["theory_percent"],
+            "pyq": syllabus_data["pyq_percent"],
+            "revision_1": syllabus_data["revision_1_percent"],
+            "revision_2": syllabus_data["revision_2_percent"],
+        }
+
+        # Build score predictor category
+        score = syllabus_data["final_score"]
+
+        category = "Needs major improvement"
+        if score >= 160:
+            category = "Strong JRF potential"
+        elif score >= 140:
+            category = "NET very likely"
+        elif score >= 120:
+            category = "NET possible"
+
+        return render_template(
+            "dashboard.html",
+            **dashboard_context,
+
+            # For syllabus partial
+            grouped_topics=syllabus_data["grouped_topics"],
+            progress=progress,
+
+            # For score predictor partial
+            subject_breakdown=syllabus_data["subject_breakdown"],
+            predicted_score=score,
+            category=category,
+        )
     @app.get("/dashboard")
     @login_required_page
     def render_dashboard() -> str:
@@ -767,48 +803,15 @@ def create_app() -> Flask:
     def render_settings() -> str:
         return render_dashboard_page("settings")
 
-
     @app.get("/syllabus")
     @login_required_page
     def render_syllabus() -> str:
-        user = get_current_user()
-        assert user is not None
-        data = compute_syllabus_progress(user)
-        return render_template(
-            "syllabus.html",
-            grouped_topics=data["grouped_topics"],
-            progress={
-                "theory": data["theory_percent"],
-                "pyq": data["pyq_percent"],
-                "revision_1": data["revision_1_percent"],
-                "revision_2": data["revision_2_percent"],
-            },
-            active_route="syllabus",
-        )
+        return render_dashboard_page("syllabus")
 
     @app.get("/score-predictor")
     @login_required_page
     def render_score_predictor() -> str:
-        user = get_current_user()
-        assert user is not None
-        data = compute_syllabus_progress(user)
-        score = data["final_score"]
-
-        category = "Needs major improvement"
-        if score >= 160:
-            category = "Strong JRF potential"
-        elif score >= 140:
-            category = "NET very likely"
-        elif score >= 120:
-            category = "NET possible"
-
-        return render_template(
-            "score_predictor.html",
-            predicted_score=score,
-            category=category,
-            subject_breakdown=data["subject_breakdown"],
-            active_route="score-predictor",
-        )
+        return render_dashboard_page("score-predictor")
 
     @app.get("/admin")
     def render_admin() -> str:

@@ -1,0 +1,106 @@
+<h1>Syllabus Tracker</h1>
+<p class="subtitle">Track theory, PYQ and revisions.</p>
+
+<!-- Overall Progress Cards -->
+<div class="cards-grid">
+  <article class="metric-card">
+    <h3>{{ progress.theory }}%</h3>
+    <p>Theory Completed</p>
+  </article>
+
+  <article class="metric-card">
+    <h3>{{ progress.pyq }}%</h3>
+    <p>30 PYQ Done</p>
+  </article>
+
+  <article class="metric-card">
+    <h3>{{ progress.revision_1 }}%</h3>
+    <p>Revision 1</p>
+  </article>
+
+  <article class="metric-card">
+    <h3>{{ progress.revision_2 }}%</h3>
+    <p>Revision 2</p>
+  </article>
+</div>
+
+<!-- Subject-wise Panels -->
+{% for subject, topics in grouped_topics.items() %}
+
+  {% set total = topics|length %}
+  {% set theory_done = topics|selectattr('theory_completed')|list|length %}
+  {% set pyq_done = topics|selectattr('pyq_30_done')|list|length %}
+  {% set rev1_done = topics|selectattr('revision_1_done')|list|length %}
+  {% set rev2_done = topics|selectattr('revision_2_done')|list|length %}
+
+  {% set total_checks = total * 4 %}
+  {% set completed_checks = theory_done + pyq_done + rev1_done + rev2_done %}
+  {% set percent = (total_checks > 0 and (completed_checks / total_checks * 100)|round(0) or 0) %}
+
+  <div class="panel subject-panel">
+
+    <!-- Subject Header -->
+    <div class="subject-header">
+      <h2>{{ subject }}</h2>
+      <span class="subject-percent">{{ percent }}%</span>
+    </div>
+
+    <!-- Subject Progress Bar -->
+    <div class="metric-bar subject-progress">
+      <span style="width: {{ percent }}%;"></span>
+    </div>
+
+    <!-- Topics -->
+    <div class="task-list">
+      {% for topic in topics %}
+        <div class="syllabus-item">
+
+          <div class="syllabus-left">
+            <strong>{{ topic.topic_name }}</strong>
+          </div>
+
+          <div class="syllabus-right">
+            <label>
+              <input type="checkbox"
+                     class="syllabus-toggle"
+                     data-topic-id="{{ topic.topic_id }}"
+                     data-field="theory_completed"
+                     {% if topic.theory_completed %}checked{% endif %}>
+              Theory
+            </label>
+
+            <label>
+              <input type="checkbox"
+                     class="syllabus-toggle"
+                     data-topic-id="{{ topic.topic_id }}"
+                     data-field="pyq_30_done"
+                     {% if topic.pyq_30_done %}checked{% endif %}>
+              30 PYQ
+            </label>
+
+            <label>
+              <input type="checkbox"
+                     class="syllabus-toggle"
+                     data-topic-id="{{ topic.topic_id }}"
+                     data-field="revision_1_done"
+                     {% if topic.revision_1_done %}checked{% endif %}>
+              Rev 1
+            </label>
+
+            <label>
+              <input type="checkbox"
+                     class="syllabus-toggle"
+                     data-topic-id="{{ topic.topic_id }}"
+                     data-field="revision_2_done"
+                     {% if topic.revision_2_done %}checked{% endif %}>
+              Rev 2
+            </label>
+          </div>
+
+        </div>
+      {% endfor %}
+    </div>
+
+  </div>
+
+{% endfor %}

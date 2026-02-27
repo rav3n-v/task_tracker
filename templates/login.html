@@ -1,24 +1,52 @@
-{% extends 'base.html' %}
-
+{% extends "base.html" %}
 {% block title %}Login - CSIR NET Tracker{% endblock %}
 
 {% block content %}
-<div class="container vh-100 d-flex justify-content-center align-items-center">
-  <div class="row w-100 justify-content-center">
-    <div class="col-md-4 offset-md-4 offset-lg-0">
-      <form class="panel form-grid compact p-4" action="{{ url_for('login_page_submit') }}" method="post">
-        <h2 class="mb-3">Login</h2>
-        <div class="mb-3">
-          <label class="form-label" for="loginUsername">Username</label>
-          <input class="form-control" id="loginUsername" name="username" required />
+
+<div class="auth-container">
+  <div class="auth-card">
+
+    <h2>CSIR NET Tracker</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="margin-bottom: 1.5rem;">
+          {% for category, message in messages %}
+            <div style="
+              padding: .8rem 1rem;
+              border-radius: 8px;
+              margin-bottom: .6rem;
+              font-size: 1.3rem;
+              background: color-mix(in srgb, var(--danger) 15%, transparent);
+              border: 1px solid var(--line);
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
         </div>
-        <div class="mb-3">
-          <label class="form-label" for="loginPassword">Password</label>
-          <input class="form-control" id="loginPassword" name="password" type="password" required />
-        </div>
-        <button type="submit" class="btn btn-primary w-100">Login</button>
-      </form>
-    </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- IMPORTANT: action="/login" -->
+    <form method="POST" action="/login">
+
+      <div class="auth-field">
+        <label>Username</label>
+        <input type="text" name="username" required>
+      </div>
+
+      <div class="auth-field">
+        <label>Password</label>
+        <input type="password" name="password" required>
+      </div>
+
+      <button type="submit" class="auth-button">
+        Login
+      </button>
+
+    </form>
+
   </div>
 </div>
+
 {% endblock %}

@@ -1,75 +1,72 @@
-{% extends 'base.html' %}
+{% extends 'dashboard.html' %}
 
 {% block content %}
-<div class="container py-4">
-  <h1>Syllabus Tracker</h1>
-  <p>
-    <a href="{{ url_for('render_dashboard') }}">Back to Dashboard</a> |
-    <a href="{{ url_for('render_score_predictor') }}">Go to Score Predictor</a>
-  </p>
+<section class="view active">
+  <div class="container py-4">
+    <h1>Syllabus Tracker</h1>
 
-  <div class="row g-3 mb-4">
-    <div class="col-md-3"><div class="card card-body">Theory: <strong id="theoryPercent">{{ progress.theory }}%</strong></div></div>
-    <div class="col-md-3"><div class="card card-body">30 PYQ: <strong id="pyqPercent">{{ progress.pyq }}%</strong></div></div>
-    <div class="col-md-3"><div class="card card-body">Revision 1: <strong id="rev1Percent">{{ progress.revision_1 }}%</strong></div></div>
-    <div class="col-md-3"><div class="card card-body">Revision 2: <strong id="rev2Percent">{{ progress.revision_2 }}%</strong></div></div>
+    <div class="row g-3 mb-4">
+      <div class="col-md-3">
+        <div class="card card-body">
+          Theory: <strong id="theoryPercent">{{ progress.theory }}%</strong>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card card-body">
+          30 PYQ: <strong id="pyqPercent">{{ progress.pyq }}%</strong>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card card-body">
+          Revision 1: <strong id="rev1Percent">{{ progress.revision_1 }}%</strong>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card card-body">
+          Revision 2: <strong id="rev2Percent">{{ progress.revision_2 }}%</strong>
+        </div>
+      </div>
+    </div>
+
+    {% for subject, topics in grouped_topics.items() %}
+      <h3>{{ subject }}</h3>
+      <div class="table-responsive mb-4">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Topic</th>
+              <th>Theory</th>
+              <th>30 PYQ</th>
+              <th>Revision 1</th>
+              <th>Revision 2</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for topic in topics %}
+            <tr>
+              <td>{{ topic.topic_name }}</td>
+              <td><input class="syllabus-toggle" type="checkbox"
+                  data-topic-id="{{ topic.topic_id }}"
+                  data-field="theory_completed"
+                  {% if topic.theory_completed %}checked{% endif %}></td>
+              <td><input class="syllabus-toggle" type="checkbox"
+                  data-topic-id="{{ topic.topic_id }}"
+                  data-field="pyq_30_done"
+                  {% if topic.pyq_30_done %}checked{% endif %}></td>
+              <td><input class="syllabus-toggle" type="checkbox"
+                  data-topic-id="{{ topic.topic_id }}"
+                  data-field="revision_1_done"
+                  {% if topic.revision_1_done %}checked{% endif %}></td>
+              <td><input class="syllabus-toggle" type="checkbox"
+                  data-topic-id="{{ topic.topic_id }}"
+                  data-field="revision_2_done"
+                  {% if topic.revision_2_done %}checked{% endif %}></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
   </div>
-
-  {% for subject, topics in grouped_topics.items() %}
-  <h3>{{ subject }}</h3>
-  <div class="table-responsive mb-4">
-    <table class="table table-striped">
-      <thead>
-        <tr>
-          <th>Topic</th>
-          <th>Theory</th>
-          <th>30 PYQ</th>
-          <th>Revision 1</th>
-          <th>Revision 2</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for topic in topics %}
-        <tr>
-          <td>{{ topic.topic_name }}</td>
-          <td><input class="syllabus-toggle" type="checkbox" data-topic-id="{{ topic.topic_id }}" data-field="theory_completed" {% if topic.theory_completed %}checked{% endif %}></td>
-          <td><input class="syllabus-toggle" type="checkbox" data-topic-id="{{ topic.topic_id }}" data-field="pyq_30_done" {% if topic.pyq_30_done %}checked{% endif %}></td>
-          <td><input class="syllabus-toggle" type="checkbox" data-topic-id="{{ topic.topic_id }}" data-field="revision_1_done" {% if topic.revision_1_done %}checked{% endif %}></td>
-          <td><input class="syllabus-toggle" type="checkbox" data-topic-id="{{ topic.topic_id }}" data-field="revision_2_done" {% if topic.revision_2_done %}checked{% endif %}></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endfor %}
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  async function req(url, options = {}) {
-    const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Request failed');
-    return data;
-  }
-
-  async function refreshPercentages() {
-    const data = await req("{{ url_for('get_syllabus_progress') }}");
-    document.getElementById('theoryPercent').textContent = `${data.theory_percent}%`;
-    document.getElementById('pyqPercent').textContent = `${data.pyq_percent}%`;
-    document.getElementById('rev1Percent').textContent = `${data.revision_1_percent}%`;
-    document.getElementById('rev2Percent').textContent = `${data.revision_2_percent}%`;
-  }
-
-  document.addEventListener('change', async (event) => {
-    const t = event.target;
-    if (!t.classList.contains('syllabus-toggle')) return;
-    await req("{{ url_for('update_syllabus_progress') }}", {
-      method: 'POST',
-      body: JSON.stringify({ topic_id: Number(t.dataset.topicId), field: t.dataset.field, value: t.checked }),
-    });
-    await refreshPercentages();
-  });
-</script>
+</section>
 {% endblock %}
