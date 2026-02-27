@@ -577,3 +577,14 @@ select:focus-visible {
 .auth-button:hover {
   opacity: 0.9;
 }
+.daily-planner-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: .8rem;
+  margin-bottom: .8rem;
+}
+
+#mockTestsList input[type='number'] {
+  margin-top: .6rem;
+  max-width: 140px;
+}

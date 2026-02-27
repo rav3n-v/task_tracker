@@ -19,7 +19,7 @@ from flask import (
 )
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import UniqueConstraint, inspect
+from sqlalchemy import UniqueConstraint
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -125,6 +125,43 @@ class StudySession(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class RoutineTemplate(db.Model):
+    __table_args__ = (
+        UniqueConstraint("title", name="uq_routine_template_title"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    display_order = db.Column(db.Integer, nullable=False, default=0)
+    time_label = db.Column(db.String(120), nullable=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "display_order": self.display_order,
+            "time_label": self.time_label,
+        }
+
+
+class RoutineCompletion(db.Model):
+    __table_args__ = (
+        UniqueConstraint("user_id", "routine_id", "date", name="uq_routine_completion_user_routine_date"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
+    routine_id = db.Column(
+        db.Integer, db.ForeignKey("routine_template.id"), nullable=False, index=True
+    )
+    date = db.Column(db.Date, nullable=False, index=True, default=date.today)
+    completed = db.Column(db.Boolean, default=False, nullable=False)
+
+    routine = db.relationship("RoutineTemplate")
+
+
 class DailyRoutineTask(db.Model):
     __table_args__ = (
         UniqueConstraint("user_id", "task_name", "date", name="uq_daily_routine_user_task_date"),
@@ -171,6 +208,49 @@ class UserSyllabusProgress(db.Model):
     pyq_30_done = db.Column(db.Boolean, default=False, nullable=False)
     revision_1_done = db.Column(db.Boolean, default=False, nullable=False)
     revision_2_done = db.Column(db.Boolean, default=False, nullable=False)
+
+
+class DailyTask(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
+    title = db.Column(db.String(255), nullable=False)
+    date = db.Column(db.Date, nullable=False, index=True, default=date.today)
+    completed = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "date": self.date.isoformat(),
+            "completed": self.completed,
+        }
+
+
+class MockTest(db.Model):
+    __table_args__ = (
+        UniqueConstraint("user_id", "test_number", name="uq_mock_test_user_test_number"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
+    test_number = db.Column(db.Integer, nullable=False)
+    attempted = db.Column(db.Boolean, default=False, nullable=False)
+    attempt_date = db.Column(db.Date, nullable=True)
+    score = db.Column(db.Float, nullable=True)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "test_number": self.test_number,
+            "attempted": self.attempted,
+            "attempt_date": self.attempt_date.isoformat() if self.attempt_date else None,
+            "score": self.score,
+        }
 
 
 SUBJECT_WEIGHTAGE: dict[str, float] = {
@@ -522,20 +602,166 @@ def seed_syllabus_topics() -> None:
         db.session.commit()
 
 
-def get_or_create_daily_routine(user: User, routine_items: list[str]) -> list[DailyRoutineTask]:
+def seed_routine_templates() -> None:
+    templates = [
+        ("7:00 AM", "Wake up"),
+        ("7:30-9:00", "Study Session 1"),
+        ("9:00 AM", "Breakfast / Break"),
+        ("10:00 AM", "Study Session 2"),
+        ("1:00 PM", "Lunch"),
+        ("2:00 PM", "Study Session 3"),
+        ("6:00 PM", "Evening Revision"),
+        ("8:30 PM", "Light Reading"),
+    ]
+    existing_titles = {
+        item.title for item in RoutineTemplate.query.with_entities(RoutineTemplate.title).all()
+    }
+    new_items = []
+    for idx, (time_label, title) in enumerate(templates):
+        if title not in existing_titles:
+            new_items.append(
+                RoutineTemplate(title=title, display_order=idx, time_label=time_label)
+            )
+    if new_items:
+        db.session.add_all(new_items)
+        db.session.commit()
+
+
+def get_or_create_daily_routine(user: User) -> list[dict[str, Any]]:
     today = date.today()
-    existing = DailyRoutineTask.query.filter_by(user_id=user.id, date=today).all()
-    existing_by_name = {item.task_name: item for item in existing}
-    created = []
-    for routine_item in routine_items:
-        if routine_item not in existing_by_name:
+    templates = RoutineTemplate.query.order_by(RoutineTemplate.display_order.asc()).all()
+    completions = RoutineCompletion.query.filter_by(user_id=user.id, date=today).all()
+    completion_by_routine = {item.routine_id: item for item in completions}
+
+    created: list[RoutineCompletion] = []
+    for template in templates:
+        if template.id not in completion_by_routine:
             created.append(
-                DailyRoutineTask(user_id=user.id, task_name=routine_item, date=today)
+                RoutineCompletion(user_id=user.id, routine_id=template.id, date=today)
             )
     if created:
         db.session.add_all(created)
         db.session.commit()
-    return DailyRoutineTask.query.filter_by(user_id=user.id, date=today).all()
+        completions = RoutineCompletion.query.filter_by(user_id=user.id, date=today).all()
+        completion_by_routine = {item.routine_id: item for item in completions}
+
+    items: list[dict[str, Any]] = []
+    for template in templates:
+        completion = completion_by_routine.get(template.id)
+        items.append(
+            {
+                "id": template.id,
+                "title": template.title,
+                "time_label": template.time_label,
+                "completed": bool(completion and completion.completed),
+                "date": today.isoformat(),
+            }
+        )
+    return items
+
+
+def calculate_daily_planner_streak(user: User) -> int:
+    completed_days = {
+        row[0]
+        for row in db.session.query(DailyTask.date)
+        .filter_by(user_id=user.id)
+        .filter(DailyTask.completed.is_(True))
+        .group_by(DailyTask.date)
+        .all()
+    }
+    streak = 0
+    current_day = date.today()
+    while current_day in completed_days:
+        streak += 1
+        current_day -= timedelta(days=1)
+    return streak
+
+
+def seed_mock_tests_for_user(user: User) -> None:
+    existing_numbers = {
+        row[0]
+        for row in db.session.query(MockTest.test_number)
+        .filter_by(user_id=user.id)
+        .all()
+    }
+    to_create = [
+        MockTest(user_id=user.id, test_number=index)
+        for index in range(1, 11)
+        if index not in existing_numbers
+    ]
+    if to_create:
+        db.session.add_all(to_create)
+        db.session.commit()
+
+
+def get_mock_test_stats(user: User) -> dict[str, Any]:
+    tests = MockTest.query.filter_by(user_id=user.id).order_by(MockTest.test_number.asc()).all()
+    attempted_tests = [item for item in tests if item.attempted]
+    scored_tests = [item.score for item in attempted_tests if item.score is not None]
+    total_tests = len(tests)
+    attempted_count = len(attempted_tests)
+    attempt_percent = round((attempted_count / total_tests) * 100, 1) if total_tests else 0
+    average_score = round(sum(scored_tests) / len(scored_tests), 2) if scored_tests else 0
+    best_score = round(max(scored_tests), 2) if scored_tests else 0
+    return {
+        "items": [test.to_dict() for test in tests],
+        "attempted_count": attempted_count,
+        "total_count": total_tests,
+        "attempt_percent": attempt_percent,
+        "average_score": average_score,
+        "best_score": best_score,
+    }
+
+
+def compute_analytics_summary(user: User) -> dict[str, Any]:
+    study_totals = calculate_study_time_totals(user)
+    sessions = StudySession.query.filter_by(user_id=user.id).all()
+    total_hours_studied = round(sum(s.duration_seconds for s in sessions) / 3600, 2)
+    session_days = {s.date for s in sessions}
+    average_daily_hours = round(total_hours_studied / len(session_days), 2) if session_days else 0
+
+    routine_items = get_or_create_daily_routine(user)
+    routine_completed = sum(1 for item in routine_items if item["completed"])
+    routine_total = len(routine_items)
+    routine_percent = round((routine_completed / routine_total) * 100, 1) if routine_total else 0
+
+    today = date.today()
+    planner_tasks = DailyTask.query.filter_by(user_id=user.id, date=today).all()
+    planner_total = len(planner_tasks)
+    planner_completed = sum(1 for item in planner_tasks if item.completed)
+    planner_percent = round((planner_completed / planner_total) * 100, 1) if planner_total else 0
+
+    mock_stats = get_mock_test_stats(user)
+    syllabus_data = compute_syllabus_progress(user)
+    syllabus_completion = round(syllabus_data["weighted_total"], 1)
+    mock_attempt_percent = mock_stats["attempt_percent"]
+    normalized_mock_score = round((mock_stats["average_score"] / 200) * 100, 1) if mock_stats["average_score"] else 0
+    productivity_index = min(100, round(study_totals["week_hours"] / 21 * 100, 1))
+
+    predicted_score = round(
+        (0.4 * syllabus_completion)
+        + (0.2 * mock_attempt_percent)
+        + (0.2 * normalized_mock_score)
+        + (0.2 * productivity_index),
+        1,
+    )
+    confidence_level = "Low"
+    if predicted_score >= 70:
+        confidence_level = "High"
+    elif predicted_score >= 45:
+        confidence_level = "Medium"
+
+    return {
+        "total_hours_studied": total_hours_studied,
+        "average_daily_hours": average_daily_hours,
+        "daily_planner_completion_percent": planner_percent,
+        "routine_consistency_percent": routine_percent,
+        "mock_test_attempt_percent": mock_attempt_percent,
+        "average_mock_score": mock_stats["average_score"],
+        "predicted_readiness_score": predicted_score,
+        "predicted_score": predicted_score,
+        "confidence_level": confidence_level,
+    }
 
 
 def calculate_study_time_totals(user: User) -> dict[str, float]:
@@ -668,24 +894,14 @@ def create_app() -> Flask:
 
     schema_checked = False
 
-    ROUTINE_TEMPLATE = [
-        "Wake up, Exercise, Wash up",
-        "Practise General / Part A",
-        "Fresh up, Breakfast",
-        "Previous day revision",
-        "Core Study Session 1",
-        "Lunch Break",
-        "Core Study Session 2",
-    ]
-
     @app.before_request
     def ensure_schema_initialized() -> None:
         nonlocal schema_checked
         if schema_checked:
             return
-        if not inspect(db.engine).has_table("user"):
-            db.create_all()
+        db.create_all()
         seed_syllabus_topics()
+        seed_routine_templates()
         schema_checked = True
 
     @app.get("/")
@@ -734,16 +950,7 @@ def create_app() -> Flask:
             "revision_2": syllabus_data["revision_2_percent"],
         }
 
-        # Build score predictor category
-        score = syllabus_data["final_score"]
-
-        category = "Needs major improvement"
-        if score >= 160:
-            category = "Strong JRF potential"
-        elif score >= 140:
-            category = "NET very likely"
-        elif score >= 120:
-            category = "NET possible"
+        analytics_summary = compute_analytics_summary(user)
 
         return render_template(
             "dashboard.html",
@@ -755,8 +962,8 @@ def create_app() -> Flask:
 
             # For score predictor partial
             subject_breakdown=syllabus_data["subject_breakdown"],
-            predicted_score=score,
-            category=category,
+            predicted_score=analytics_summary["predicted_score"],
+            category=analytics_summary["confidence_level"],
         )
     @app.get("/dashboard")
     @login_required_page
@@ -1009,13 +1216,18 @@ def create_app() -> Flask:
     def get_daily_routine() -> Response:
         user = get_current_user()
         assert user is not None
-        tasks = get_or_create_daily_routine(user, ROUTINE_TEMPLATE)
-        completed = sum(1 for item in tasks if item.completed)
-        percent = round((completed / len(tasks)) * 100, 1) if tasks else 0
+        items = get_or_create_daily_routine(user)
+        completed_count = sum(1 for item in items if item["completed"])
+        total_count = len(items)
+        completion_percentage = round((completed_count / total_count) * 100, 1) if total_count else 0
         return jsonify(
             {
-                "tasks": [task.to_dict() for task in tasks],
-                "completed_percent": percent,
+                "items": items,
+                "tasks": items,
+                "completed_count": completed_count,
+                "total_count": total_count,
+                "completion_percentage": completion_percentage,
+                "completed_percent": completion_percentage,
             }
         )
 
@@ -1029,24 +1241,166 @@ def create_app() -> Flask:
             return error
         assert payload is not None
 
-        task_name = require_string_field(payload, "task_name")
-        completed = payload.get("completed")
-        if task_name is None:
-            return jsonify({"error": "task_name is required"}), 400
-        if not isinstance(completed, bool):
-            return jsonify({"error": "completed must be a boolean"}), 400
+        routine_id = payload.get("routine_id")
+        if not isinstance(routine_id, int) or isinstance(routine_id, bool):
+            return jsonify({"error": "routine_id must be an integer"}), 400
 
-        task = DailyRoutineTask.query.filter_by(user_id=user.id, task_name=task_name, date=date.today()).first()
-        if task is None:
-            task = DailyRoutineTask(user_id=user.id, task_name=task_name, date=date.today())
-            db.session.add(task)
+        completion = RoutineCompletion.query.filter_by(
+            user_id=user.id,
+            routine_id=routine_id,
+            date=date.today(),
+        ).first()
+        if completion is None:
+            completion = RoutineCompletion(user_id=user.id, routine_id=routine_id, date=date.today(), completed=False)
+            db.session.add(completion)
 
-        task.completed = completed
+        completion.completed = not completion.completed
         db.session.commit()
 
-        tasks = get_or_create_daily_routine(user, ROUTINE_TEMPLATE)
-        done = sum(1 for item in tasks if item.completed)
-        return jsonify({"ok": True, "completed_percent": round((done / len(tasks)) * 100, 1) if tasks else 0})
+        items = get_or_create_daily_routine(user)
+        completed_count = sum(1 for item in items if item["completed"])
+        total_count = len(items)
+        completion_percentage = round((completed_count / total_count) * 100, 1) if total_count else 0
+        return jsonify(
+            {
+                "ok": True,
+                "items": items,
+                "tasks": items,
+                "completed_count": completed_count,
+                "total_count": total_count,
+                "completion_percentage": completion_percentage,
+                "completed_percent": completion_percentage,
+            }
+        )
+
+    @app.get("/api/daily-planner")
+    @require_login
+    def get_daily_planner() -> Response:
+        user = get_current_user()
+        assert user is not None
+        raw_date = request.args.get("date")
+        try:
+            planner_date = parse_optional_date(raw_date) if raw_date else date.today()
+        except ValueError:
+            return jsonify({"error": f"date must use format {DATE_FORMAT}"}), 400
+        tasks = DailyTask.query.filter_by(user_id=user.id, date=planner_date).order_by(DailyTask.created_at.asc()).all()
+        total_count = len(tasks)
+        completed_count = sum(1 for task in tasks if task.completed)
+        completion_percentage = round((completed_count / total_count) * 100, 1) if total_count else 0
+        return jsonify(
+            {
+                "date": planner_date.isoformat(),
+                "items": [task.to_dict() for task in tasks],
+                "completed_count": completed_count,
+                "total_count": total_count,
+                "completion_percentage": completion_percentage,
+                "streak": calculate_daily_planner_streak(user),
+            }
+        )
+
+    @app.post("/api/daily-planner")
+    @require_login
+    def create_daily_planner_task() -> tuple[Response, int]:
+        user = get_current_user()
+        assert user is not None
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
+
+        title = require_string_field(payload, "title")
+        if title is None:
+            return jsonify({"error": "title is required"}), 400
+
+        try:
+            task_date = parse_optional_date(payload.get("date")) if payload.get("date") else date.today()
+        except ValueError:
+            return jsonify({"error": f"date must use format {DATE_FORMAT}"}), 400
+        task = DailyTask(user_id=user.id, title=title, date=task_date)
+        db.session.add(task)
+        db.session.commit()
+        return jsonify(task.to_dict()), 201
+
+    @app.patch("/api/daily-planner/<int:task_id>")
+    @require_login
+    def toggle_daily_planner_task(task_id: int) -> Response:
+        user = get_current_user()
+        assert user is not None
+        task = DailyTask.query.filter_by(id=task_id, user_id=user.id).first()
+        if task is None:
+            return jsonify({"error": "Task not found"}), 404
+        task.completed = not task.completed
+        db.session.commit()
+        return jsonify(task.to_dict())
+
+    @app.delete("/api/daily-planner/<int:task_id>")
+    @require_login
+    def delete_daily_planner_task(task_id: int) -> Response:
+        user = get_current_user()
+        assert user is not None
+        task = DailyTask.query.filter_by(id=task_id, user_id=user.id).first()
+        if task is None:
+            return jsonify({"error": "Task not found"}), 404
+        db.session.delete(task)
+        db.session.commit()
+        return jsonify({"ok": True})
+
+    @app.patch("/api/mock-tests/<int:test_number>")
+    @require_login
+    def update_mock_test(test_number: int) -> Response:
+        user = get_current_user()
+        assert user is not None
+        if test_number < 1 or test_number > 10:
+            return jsonify({"error": "test_number must be between 1 and 10"}), 400
+
+        seed_mock_tests_for_user(user)
+        payload, error = parse_json_payload()
+        if error:
+            return error
+        assert payload is not None
+
+        test = MockTest.query.filter_by(user_id=user.id, test_number=test_number).first()
+        assert test is not None
+
+        if "attempted" in payload:
+            if not isinstance(payload["attempted"], bool):
+                return jsonify({"error": "attempted must be a boolean"}), 400
+            test.attempted = payload["attempted"]
+
+        if "attempt_date" in payload:
+            if payload["attempt_date"] in (None, ""):
+                test.attempt_date = None
+            else:
+                try:
+                    test.attempt_date = parse_optional_date(str(payload["attempt_date"]))
+                except ValueError:
+                    return jsonify({"error": f"attempt_date must use format {DATE_FORMAT}"}), 400
+
+        if "score" in payload:
+            if payload["score"] in (None, ""):
+                test.score = None
+            elif isinstance(payload["score"], (int, float)) and not isinstance(payload["score"], bool):
+                test.score = float(payload["score"])
+            else:
+                return jsonify({"error": "score must be a number or null"}), 400
+
+        db.session.commit()
+        return jsonify({"item": test.to_dict(), **get_mock_test_stats(user)})
+
+    @app.get("/api/mock-tests")
+    @require_login
+    def get_mock_tests() -> Response:
+        user = get_current_user()
+        assert user is not None
+        seed_mock_tests_for_user(user)
+        return jsonify(get_mock_test_stats(user))
+
+    @app.get("/api/analytics-summary")
+    @require_login
+    def get_analytics_summary() -> Response:
+        user = get_current_user()
+        assert user is not None
+        return jsonify(compute_analytics_summary(user))
 
     @app.get("/api/syllabus-progress")
     @require_login

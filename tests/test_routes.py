@@ -380,7 +380,7 @@ def test_dashboard_includes_server_side_context_values(auth_client):
     assert response.status_code == 200
     body = response.get_data(as_text=True)
     assert 'Study Streak:' in body
-    assert 'window.APP_CONFIG' in body
+    assert '/static/js/app.js' in body
     assert 'countDays' in body
 
 
@@ -399,9 +399,9 @@ def test_daily_routine_toggle_and_progress(auth_client):
     payload = response.get_json()
     assert len(payload["tasks"]) >= 1
 
-    task_name = payload["tasks"][0]["task_name"]
+    routine_id = payload["tasks"][0]["id"]
     update = auth_client.post(
-        "/api/daily-routine", json={"task_name": task_name, "completed": True}
+        "/api/daily-routine", json={"routine_id": routine_id}
     )
     assert update.status_code == 200
     assert update.get_json()["completed_percent"] > 0
@@ -436,7 +436,7 @@ def test_score_predictor_uses_weighted_baseline(auth_client, app):
     body = response.get_data(as_text=True)
     assert "Final Predicted Score / 200" in body
     assert ">20<" in body
-    assert "Needs major improvement" in body
+    assert "Low" in body
 
 
 def test_score_predictor_reaches_jrf_category_with_full_progress(auth_client, app):
@@ -463,4 +463,4 @@ def test_score_predictor_reaches_jrf_category_with_full_progress(auth_client, ap
     assert response.status_code == 200
     body = response.get_data(as_text=True)
     assert "200.0" in body or "200" in body
-    assert "Strong JRF potential" in body
+    assert "High" in body
